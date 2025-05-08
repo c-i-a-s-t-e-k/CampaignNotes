@@ -3,6 +3,10 @@
  */
 package CampainNotes;
 
+import org.neo4j.driver.AuthTokens;
+import org.neo4j.driver.GraphDatabase;
+import io.github.cdimascio.dotenv.Dotenv;
+
 public class App {
     public String getGreeting() {
         return "My Hello World!";
@@ -10,5 +14,18 @@ public class App {
 
     public static void main(String[] args) {
         System.out.println(new App().getGreeting());
+        
+        // Load environment variables from .env file
+        Dotenv dotenv = Dotenv.load();
+        
+        // Get database connection details from environment variables
+        final String dbUri = dotenv.get("NEO4J_URI");
+        final String dbUser = dotenv.get("NEO4J_USER");
+        final String dbPassword = dotenv.get("NEO4J_PASSWORD");
+
+        try (var driver = GraphDatabase.driver(dbUri, AuthTokens.basic(dbUser, dbPassword))) {
+            driver.verifyConnectivity();
+            System.out.println("Connection established.");
+        }
     }
 }
