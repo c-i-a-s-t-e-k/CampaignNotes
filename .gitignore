@@ -43,3 +43,9 @@ logs/
 # Build output
 out/
 target/
+
+#qdrant
+qdrant_storage/
+
+#my lesset scripts
+start_dbs.sh
