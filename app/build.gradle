@@ -28,6 +28,9 @@ dependencies {
     
     // Dotenv - for loading environment variables from .env file
     implementation 'io.github.cdimascio:dotenv-java:3.2.0'
+
+    // Qdrant client - for connecting to Qdrant vector database
+    implementation 'io.qdrant:client:1.14.0'
 }
 
 application {
