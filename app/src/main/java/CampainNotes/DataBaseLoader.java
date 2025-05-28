@@ -31,9 +31,9 @@ public class DataBaseLoader {
      */
     public DataBaseLoader() {
         try {
-            this.dotenv = Dotenv.load();
+            this.dotenv = Dotenv.configure().directory("./").load();
         } catch (Exception e) {
-            System.err.println("Error loading .env file: " + e.getMessage());
+            System.err.println("Error loading .env file: " + e.getMessage() + " working directory: " + System.getProperty("user.dir"));
         }
     }
     
@@ -159,7 +159,10 @@ public class DataBaseLoader {
                 System.err.println("Error closing Neo4j connection: " + e.getMessage());
             }
         }
-        // Qdrant client doesn't have an explicit close method for current API
+        if (qdrantClient != null) {
+            qdrantClient.close();
+            System.out.println("Neo4j database closed");
+        }
     }
     
     /**
@@ -283,6 +286,25 @@ public class DataBaseLoader {
         } catch (SQLException e) {
             System.err.println("Error saving campaign to database: " + e.getMessage());
             throw e;
+        }
+    }
+    
+    /**
+     * Deletes a campaign from the SQLite database.
+     * @param uuid The UUID of the campaign to delete
+     * @return true if the campaign was successfully deleted, false otherwise
+     * @throws SQLException if there is an error executing the SQL query
+     */
+    public boolean deleteCampaign(String uuid) throws SQLException {
+        String sql = "DELETE FROM campains WHERE uuid = ?";
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, uuid);
+            int affectedRows = pstmt.executeUpdate();
+            
+            return affectedRows > 0;
         }
     }
 }

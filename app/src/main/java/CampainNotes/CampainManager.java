@@ -75,4 +75,32 @@ public class CampainManager {
             return null;
         }
     }
+
+    /**
+     * Deletes a campaign with the given UUID from both the local map and databases.
+     * @param uuid The UUID of the campaign to delete
+     * @return true if the campaign was successfully deleted, false otherwise
+     */
+    public boolean deleteCampaign(String uuid) {
+        try {
+            Campain campaignToDelete = campaignsMap.get(uuid);
+            if (campaignToDelete == null) {
+                return false;
+            }
+
+            // Delete from Qdrant collection
+            dbLoader.getQdrantClient().deleteCollectionAsync(campaignToDelete.getQuadrantCollectionName()).get();
+            
+            // Delete from database
+            dbLoader.deleteCampaign(uuid);
+            
+            // Remove from local map
+            campaignsMap.remove(uuid);
+            
+            return true;
+        } catch (Exception e) {
+            System.err.println("Error deleting campaign: " + e.getMessage());
+            return false;
+        }
+    }
 }

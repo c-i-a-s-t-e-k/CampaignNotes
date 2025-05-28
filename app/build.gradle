@@ -17,7 +17,7 @@ repositories {
 }
 
 dependencies {
-    // Use JUnit test framework.
+    // Use JUnit Jupiter for testing
     testImplementation 'junit:junit:4.13.2'
 
     // This dependency is used by the application.
@@ -41,4 +41,20 @@ dependencies {
 application {
     // Define the main class for the application.
     mainClass = 'CampainNotes.App'
+}
+test {
+    // Use JUnit 4 platform
+    useJUnit()
+
+    // Show test results
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+
+    // Set system properties for tests
+    systemProperty 'file.encoding', 'UTF-8'
+
+    // Set JVM arguments
+    jvmArgs '-Xmx1024m'
 }
