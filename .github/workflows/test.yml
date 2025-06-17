@@ -80,17 +80,8 @@ jobs:
         echo "Creating .env file with database connection details..."
         touch /home/runner/work/CampaignNotes/CampaignNotes/app/.env
         
-        echo "NEO4J_URI=neo4j://localhost" >> /home/runner/work/CampaignNotes/CampaignNotes/app/.env
-        echo "NEO4J_USER=neo4j" >> /home/runner/work/CampaignNotes/CampaignNotes/app/.env
-        echo "NEO4J_PASSWORD=password" >> /home/runner/work/CampaignNotes/CampaignNotes/app/.env
-        echo "QUADRANT_URL=localhost" >> /home/runner/work/CampaignNotes/CampaignNotes/app/.env
-        # LANGFUSE_SECRET_KEY=${{ secrets.LANGFUSE_SECRET_KEY }}
-        # LANGFUSE_PUBLIC_KEY=${{ secrets.LANGFUSE_PUBLIC_KEY }}
-        echo "LANGFUSE_HOST=${{ secrets.LANGFUSE_HOST }}" >> /home/runner/work/CampaignNotes/CampaignNotes/app/.env
-        # QUADRANT_GRPC_PORT=${{ secrets.QUADRANT_GRPC_PORT }}
-        # QUADRANT_URL=${{ secrets.QUADRANT_URL }}
+        echo "${{secrets.TEST_SECRETS}}" >> /home/runner/work/CampaignNotes/CampaignNotes/app/.env
         echo ".env file created!"
-        cat /home/runner/work/CampaignNotes/CampaignNotes/app/.env
 
     - name: Verify database connections
       run: |
