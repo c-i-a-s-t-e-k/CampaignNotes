@@ -6,7 +6,7 @@
 - **TypeScript** can be added for static typing and improved developer experience (assuming it might be added later or is desired).
 
 ## Backend - Java Application with Gradle:
-- Built using **Java**, leveraging the JVM ecosystem.
+- Built using **Java 21**, leveraging the JVM ecosystem.
 - Managed by **Gradle 7.2** for dependency management and build automation.
 - Utilizes **JUnit 4 (4.13.2)** for unit testing.
 - Includes **Google Guava (30.1.1-jre)** for utility libraries.
