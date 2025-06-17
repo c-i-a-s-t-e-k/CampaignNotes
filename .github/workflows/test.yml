@@ -38,6 +38,8 @@ jobs:
           --health-interval 10s
           --health-timeout 10s
           --health-retries 10
+          --ulimit nofile=65535:65535
+          --mount type=tmpfs,destination=/qdrant/storage
 
     steps:
     - name: Checkout repository
