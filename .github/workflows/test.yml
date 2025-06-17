@@ -90,6 +90,7 @@ jobs:
         QUADRANT_URL=${{ secrets.QUADRANT_URL }}
         EOF
         echo ".env file created!"
+        cat /home/runner/work/CampaignNotes/CampaignNotes/app/.env
 
     - name: Verify database connections
       run: |
