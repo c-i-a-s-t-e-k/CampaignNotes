@@ -27,7 +27,7 @@ public class App {
         connect();
 
 
-        CampainManager creator = new CampainManager();
+        CampaignManager creator = new CampaignManager();
         if (creator.checkDatabasesAvailability()){
             System.out.println("Databases available.");
         }else {

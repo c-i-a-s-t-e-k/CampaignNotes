@@ -11,7 +11,7 @@ import io.qdrant.client.grpc.Collections.Distance;
 import io.qdrant.client.grpc.Collections.VectorParams;
 import model.Campain;
 
-public class CampainManager {
+public class CampaignManager {
 
     private final Map<String, Campain> campaignsMap = new HashMap<>();
     private final DataBaseLoader dbLoader;
@@ -19,7 +19,7 @@ public class CampainManager {
     /**
      * Constructor that initializes the CampainManager and loads campaign data from the SQLite database.
      */
-    public CampainManager() {
+    public CampaignManager() {
         dbLoader = new DataBaseLoader();
         loadCampaignsFromDatabase();
     }
