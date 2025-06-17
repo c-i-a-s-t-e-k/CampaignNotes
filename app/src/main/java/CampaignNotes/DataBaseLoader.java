@@ -1,4 +1,4 @@
-package CampainNotes;
+package CampaignNotes;
 
 import java.sql.Connection;
 import java.sql.DriverManager;

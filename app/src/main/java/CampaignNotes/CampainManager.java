@@ -1,4 +1,4 @@
-package CampainNotes;
+package CampaignNotes;
 
 import java.sql.SQLException;
 import java.util.HashMap;
