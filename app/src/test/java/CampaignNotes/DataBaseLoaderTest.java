@@ -36,14 +36,14 @@ public class DataBaseLoaderTest {
 
     @Test
     public void testDatabaseConnectivity() {
-        // Test if both databases are available
-        assertTrue("Both Neo4j and Qdrant databases should be available", dataBaseLoader.checkDatabasesAvailability()
-            );
-
         // Test individual connections
         assertNotNull("Neo4j driver should be initialized", dataBaseLoader.getNeo4jDriver()
-            );
+        );
         assertNotNull("Qdrant client should be initialized", dataBaseLoader.getQdrantClient()
+        );
+
+        // Test if both databases are available
+        assertTrue("Both Neo4j and Qdrant databases should be available", dataBaseLoader.checkDatabasesAvailability()
             );
     }
 
