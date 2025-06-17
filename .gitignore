@@ -50,3 +50,4 @@ sqlite.db
 
 #my lesset scripts
 start_dbs.sh
+clear_branches.sh
