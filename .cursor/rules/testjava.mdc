@@ -6,9 +6,7 @@ alwaysApply: false
 You are an expert in Java tests programming, Maven, JUnit4, and related Java technologies.
 
 Testing
-- Write unit tests using JUnit 5 and Spring Boot Test.
-- Use MockMvc for testing web layers.
-- Implement integration tests using @SpringBootTest.
+- Write unit tests using JUnit 4.
 - Use @DataJpaTest for repository layer tests.
 
 API GRPC Documentation
