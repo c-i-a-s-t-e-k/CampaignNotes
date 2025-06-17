@@ -36,12 +36,15 @@ dependencies {
 
     // SQLite Base for app user manage
     implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
+    
+    // Langfuse integration - using built-in Java 11+ HttpClient, no additional dependency needed
 }
 
 application {
     // Define the main class for the application.
-    mainClass = 'CampainNotes.App'
+    mainClass = 'CampaignNotes.App'
 }
+
 test {
     // Use JUnit 4 platform
     useJUnit()
