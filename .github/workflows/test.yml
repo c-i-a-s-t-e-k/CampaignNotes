@@ -72,7 +72,7 @@ jobs:
     - name: Create SQLite database
       run: |
         echo "Creating SQLite database with schema..."
-        sqlite3 sqlite.db "CREATE TABLE IF NOT EXISTS campains (uuid TEXT PRIMARY KEY, name TEXT, neo4j_label TEXT, quadrant_collection_name TEXT);"
+        sqlite3 /home/runner/work/CampaignNotes/CampaignNotes/app/sqlite.db "CREATE TABLE IF NOT EXISTS campains (uuid TEXT PRIMARY KEY, name TEXT, neo4j_label TEXT, quadrant_collection_name TEXT);"
         echo "SQLite database created successfully!"
 
     - name: Create .env file for tests
