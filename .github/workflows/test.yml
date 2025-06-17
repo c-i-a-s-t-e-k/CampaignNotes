@@ -13,19 +13,19 @@ jobs:
 
     services:
       # Neo4j database service
-      neo4j:
-        image: neo4j:5.17
-        env:
-          NEO4J_AUTH: neo4j/password
-          NEO4J_PLUGINS: '["apoc"]'
-        ports:
-          - 7474:7474
-          - 7687:7687
-        options: >-
-          --health-cmd "cypher-shell -u neo4j -p password 'RETURN 1'"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 10
+    #   neo4j:
+    #     image: neo4j:5.17
+    #     env:
+    #       NEO4J_AUTH: neo4j/password
+    #       NEO4J_PLUGINS: '["apoc"]'
+    #     ports:
+    #       - 7474:7474
+    #       - 7687:7687
+    #     options: >-
+    #       --health-cmd "cypher-shell -u neo4j -p password 'RETURN 1'"
+    #       --health-interval 10s
+    #       --health-timeout 10s
+    #       --health-retries 10
 
       # Qdrant vector database service
       qdrant:
