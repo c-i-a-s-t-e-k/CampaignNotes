@@ -2,7 +2,7 @@ name: Java CI with Neo4j and Qdrant
 
 on:
   push:
-    branches: [ master, develop] #github-actions-feature
+    branches: [ master, develop, github-actions-feature]
   pull_request:
     branches: [ master, develop]
   workflow_dispatch:
@@ -101,17 +101,17 @@ jobs:
       run: |
         cd app
         ../gradlew test --stacktrace
-      env:
-        NEO4J_URI: bolt://localhost:7687
-        NEO4J_USER: neo4j
-        NEO4J_PASSWORD: password
-        QDRANT_HOST: localhost
-        QDRANT_PORT: 6333
-        LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-        LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-        LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
-        QUADRANT_GRPC_PORT: ${{ secrets.QUADRANT_GRPC_PORT }}
-        QUADRANT_URL: ${{ secrets.QUADRANT_URL }}
+    #   env:
+    #     NEO4J_URI: bolt://localhost:7687
+    #     NEO4J_USER: neo4j
+    #     NEO4J_PASSWORD: password
+    #     QDRANT_HOST: localhost
+    #     QDRANT_PORT: 6333
+    #     LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+    #     LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+    #     LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
+    #     QUADRANT_GRPC_PORT: ${{ secrets.QUADRANT_GRPC_PORT }}
+    #     QUADRANT_URL: ${{ secrets.QUADRANT_URL }}
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
