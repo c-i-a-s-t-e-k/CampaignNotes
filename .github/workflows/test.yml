@@ -2,9 +2,9 @@ name: Java CI with Neo4j and Qdrant
 
 on:
   push:
-    branches: [ master, develop, github-actions-feature ]
+    branches: [ master, develop] #github-actions-feature
   pull_request:
-    branches: [ master, develop, github-actions-feature ]
+    branches: [ master, develop]
   workflow_dispatch:
 
 jobs:
