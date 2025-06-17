@@ -36,7 +36,7 @@ The problem is particularly acute for campaigns that span months or years, invol
 - FR-007: Campaign settings and metadata management
 
 ### 3.3 Note Management
-- FR-008: Note entry interface supporting up to 5k tokens per note
+- FR-008: Note entry interface supporting up to 500 words per note
 - FR-010: Versioning system through note overrides
 - FR-011: Special terminology recording as explanation notes
 
@@ -71,7 +71,7 @@ The problem is particularly acute for campaigns that span months or years, invol
 ### 4.1 Technical Constraints
 - PC-001: Web-based application (no mobile version in MVP)
 - PC-002: Integration limited to Neo4j for graph database and Qdrant for vector database
-- PC-003: 5k words limit per note
+- PC-003: 500 words limit per note
 - PC-004: No batch processing of notes in MVP
 - PC-005: No cross-campaign artifacts in MVP
 
@@ -161,7 +161,7 @@ The problem is particularly acute for campaigns that span months or years, invol
 - Description: As a GM, I want to enter session notes to document campaign events.
 - Acceptance Criteria:
   1. User can create new note with title and content
-  2. System accepts up to 5k tokens per note
+  2. System accepts up to 500 words per note
   3. User can save note to the campaign
   4. Notes are loaded to vector and graph databases
   5. Notes artifacts appear in campaign graph
@@ -233,8 +233,7 @@ The problem is particularly acute for campaigns that span months or years, invol
   1. User can zoom in/out of graph
   2. User can pan across graph
   3. User can center on specific artifacts
-  4. User can expand/collapse node relationships
-  5. Graph maintains performance during navigation
+  4. Graph maintains performance during navigation
 
 ### Search and Query
 
@@ -267,10 +266,11 @@ The problem is particularly acute for campaigns that span months or years, invol
   3. Admin can view user correction patterns
   4. Admin can access error logs
   5. Stats update in real-time
+  6. Ai tokens costs
 
 ## 6. Success Metrics
 
 ### 6.1 Technical Performance
 - SM-001: AI artifact identification accuracy exceeds 75%
-- SM-002: Processing time for note analysis under 1 minute for 5k token notes
+- SM-002: Processing time for note analysis under 1 minute for 500 words notes
 - SM-003: Query response time under 10 seconds for simple queries

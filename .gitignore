@@ -43,3 +43,10 @@ logs/
 # Build output
 out/
 target/
+
+#qdrant neo4j and sqlitedb
+qdrant_storage/
+sqlite.db
+
+#my lesset scripts
+start_dbs.sh
