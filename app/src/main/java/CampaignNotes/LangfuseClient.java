@@ -302,14 +302,6 @@ public class LangfuseClient {
         }
     }
     
-    // Future methods can be added here for extended functionality:
-    // - createTrace()
-    // - createSpan() 
-    // - createGeneration()
-    // - createScore()
-    // - getAnnotationQueues()
-    // - etc.
-    
     /**
      * Retrieves a trace from Langfuse by its ID.
      * Used for verification purposes, typically in testing scenarios.
@@ -348,3 +340,12 @@ public class LangfuseClient {
         }
     }
 } 
+
+    // Future methods can be added here for extended functionality:
+    // - createTrace()
+    // - createSpan() 
+    // - createGeneration()
+    // - createScore()
+    // - getAnnotationQueues()
+    // - etc.
+    
