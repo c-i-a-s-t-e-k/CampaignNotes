@@ -45,5 +45,10 @@ public class App {
         } catch (Exception e) {
             System.out.println("Langfuse connection failed: " + e.getMessage());
         }
+        
+        // Start Terminal Interface
+        System.out.println("\nStarting Terminal Interface...");
+        TerminalInterface terminalInterface = new TerminalInterface();
+        terminalInterface.start();
     }
 }

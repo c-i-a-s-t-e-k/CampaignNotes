@@ -38,6 +38,9 @@ dependencies {
     implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
     
     // Langfuse integration - using built-in Java 11+ HttpClient, no additional dependency needed
+    
+    // Gson for JSON parsing in OpenAI API calls
+    implementation 'com.google.code.gson:gson:2.10.1'
 }
 
 application {

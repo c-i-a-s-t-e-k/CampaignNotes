@@ -58,7 +58,7 @@ public class DataBaseLoaderTest {
         Campain testCampaign = new Campain(testUuid, testName, testNeo4jLabel, testQdrantCollection);
 
         // Save the campaign
-        assertTrue("Campaign should be saved successfully", dataBaseLoader.saveCampaign(testCampaign)
+        assertTrue("Campaign should be saved successfully", dataBaseLoader.saveCampaignToRelativeDB(testCampaign)
             );
 
         // Verify campaign exists in SQLite
@@ -74,7 +74,7 @@ public class DataBaseLoaderTest {
         }
 
         // Clean up - delete the test campaign
-        dataBaseLoader.deleteCampaign(testUuid);
+        dataBaseLoader.deleteCampaignFromRelativeDB(testUuid);
     }
 
     @Test
@@ -86,11 +86,11 @@ public class DataBaseLoaderTest {
         String testQdrantCollection = "test_collection_delete_" + testUuid.substring(0, 8);
 
         Campain testCampaign = new Campain(testUuid, testName, testNeo4jLabel, testQdrantCollection);
-        dataBaseLoader.saveCampaign(testCampaign);
+        dataBaseLoader.saveCampaignToRelativeDB(testCampaign);
 
         // Delete the campaign
         assertTrue("Campaign should be deleted successfully",
-                dataBaseLoader.deleteCampaign(testUuid)
+                dataBaseLoader.deleteCampaignFromRelativeDB(testUuid)
             );
 
         // Verify campaign doesn't exist in SQLite

@@ -1,0 +1,79 @@
+# GitHub Labeler Configuration for CampaignNotes
+# Based on project structure: Java backend, React frontend, databases, and AI integration
+# Configuration for actions/labeler@v4
+
+documentation:
+  - "*.md"
+  - "docs/**/*"
+  - ".ai/**/*"
+  - "README*"
+
+frontend:
+  - "frontend/**/*"
+  - "frontend/src/**/*"
+  - "frontend/public/**/*"
+  - "*.html"
+  - "*.css"
+  - "*.js"
+  - "*.jsx"
+  - "*.ts"
+  - "*.tsx"
+
+backend:
+  - "app/**/*"
+  - "app/src/main/java/**/*"
+  - "*.java"
+  - "*.gradle"
+  - "gradle/**/*"
+  - "gradlew*"
+
+tests:
+  - "app/src/test/**/*"
+  - "frontend/src/**/*.test.*"
+  - "frontend/src/**/*.spec.*"
+  - "tests/**/*"
+  - "**/test_*.java"
+  - "**/*_test.js"
+  - "**/*_test.ts"
+  - "**/*Test.java"
+
+configuration:
+  - "*.yml"
+  - "*.yaml"
+  - "*.json"
+  - ".github/**/*"
+  - "package.json"
+  - "package-lock.json"
+  - "build.gradle"
+  - "settings.gradle"
+  - "gradle.properties"
+
+database:
+  - "*.db"
+  - "*.sql"
+  - "qdrant_storage/**/*"
+  - "**/migrations/**/*"
+  - "**/schema/**/*"
+
+ai:
+  - "**/*ai*/**/*"
+  - "**/*llm*/**/*"
+  - "**/*openrouter*/**/*"
+  - "**/*langfuse*/**/*"
+  - "**/*promptfoo*/**/*"
+  - "**/prompts/**/*"
+
+dependencies:
+  - "package.json"
+  - "package-lock.json"
+  - "build.gradle"
+  - "gradle/wrapper/**/*"
+  - "requirements.txt"
+  - "yarn.lock"
+
+ci-cd:
+  - ".github/workflows/**/*"
+  - ".github/actions/**/*"
+  - "Dockerfile"
+  - "docker-compose.*"
+  - ".dockerignore" 
