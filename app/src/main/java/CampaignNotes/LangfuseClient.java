@@ -6,8 +6,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import io.github.cdimascio.dotenv.Dotenv;
@@ -127,6 +130,24 @@ public class LangfuseClient {
      */
     public boolean trackEmbedding(String input, String model, String campaignId, String noteId, 
                                  int tokensUsed, long durationMs) {
+        return trackEmbedding(input, model, campaignId, noteId, tokensUsed, durationMs, Collections.emptyList());
+    }
+    
+    /**
+     * Tracks an embedding generation call to Langfuse with custom tags.
+     * Creates a generation entry with proper tagging for OpenAI embedding calls.
+     * 
+     * @param input the input text that was embedded
+     * @param model the embedding model used
+     * @param campaignId the campaign UUID
+     * @param noteId the note ID (if applicable)
+     * @param tokensUsed number of tokens consumed
+     * @param durationMs time taken in milliseconds
+     * @param customTags additional custom tags to include
+     * @return true if tracking was successful, false otherwise
+     */
+    public boolean trackEmbedding(String input, String model, String campaignId, String noteId, 
+                                 int tokensUsed, long durationMs, List<String> customTags) {
         try {
             String generationEndpoint = langfuseHost + "/api/public/generations";
             
@@ -155,12 +176,19 @@ public class LangfuseClient {
             payload.add("metadata", metadata);
             
             // Add tags for filtering and organization
-            payload.addProperty("tags", String.join(",", 
-                "system:campaign-notes",
-                "component:embedding",
-                "model:" + model,
-                "campaign:" + campaignId.substring(0, 8) // First 8 chars of UUID for grouping
-            ));
+            JsonArray tagsArray = new JsonArray();
+            tagsArray.add("system:campaign-notes");
+            tagsArray.add("component:embedding");
+            tagsArray.add("model:" + model);
+            tagsArray.add("campaign:" + campaignId.substring(0, 8)); // First 8 chars of UUID for grouping
+            
+            // Add custom tags if provided
+            if (customTags != null) {
+                for (String customTag : customTags) {
+                    tagsArray.add(customTag);
+                }
+            }
+            payload.add("tags", tagsArray);
             
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(generationEndpoint))
@@ -201,6 +229,21 @@ public class LangfuseClient {
      * @return trace ID for linking related generations, or null if failed
      */
     public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId) {
+        return trackNoteProcessingSession(sessionName, campaignId, noteId, userId, Collections.emptyList());
+    }
+    
+    /**
+     * Tracks a note processing session to Langfuse with custom tags.
+     * Creates a trace for the entire note processing workflow.
+     * 
+     * @param sessionName name of the session (e.g., "note-processing")
+     * @param campaignId the campaign UUID
+     * @param noteId the note ID
+     * @param userId user performing the action (if available)
+     * @param customTags additional custom tags to include
+     * @return trace ID for linking related generations, or null if failed
+     */
+    public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId, List<String> customTags) {
         try {
             String traceEndpoint = langfuseHost + "/api/public/traces";
             
@@ -220,11 +263,18 @@ public class LangfuseClient {
             payload.add("metadata", metadata);
             
             // Add tags
-            payload.addProperty("tags", String.join(",", 
-                "system:campaign-notes",
-                "workflow:note-processing",
-                "campaign:" + campaignId.substring(0, 8)
-            ));
+            JsonArray tagsArray = new JsonArray();
+            tagsArray.add("system:campaign-notes");
+            tagsArray.add("workflow:note-processing");
+            tagsArray.add("campaign:" + campaignId.substring(0, 8));
+            
+            // Add custom tags if provided
+            if (customTags != null) {
+                for (String customTag : customTags) {
+                    tagsArray.add(customTag);
+                }
+            }
+            payload.add("tags", tagsArray);
             
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(traceEndpoint))
@@ -259,4 +309,42 @@ public class LangfuseClient {
     // - createScore()
     // - getAnnotationQueues()
     // - etc.
+    
+    /**
+     * Retrieves a trace from Langfuse by its ID.
+     * Used for verification purposes, typically in testing scenarios.
+     * 
+     * @param traceId the ID of the trace to retrieve
+     * @return JsonObject containing the trace data, or null if not found/error occurred
+     */
+    public JsonObject getTrace(String traceId) {
+        try {
+            String getTraceEndpoint = langfuseHost + "/api/public/traces/" + traceId;
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(getTraceEndpoint))
+                    .header("Authorization", basicAuthHeader)
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .GET()
+                    .build();
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                return gson.fromJson(response.body(), JsonObject.class);
+            } else if (response.statusCode() == 404) {
+                System.err.println("Trace not found: " + traceId);
+                return null;
+            } else {
+                System.err.println("Failed to retrieve trace. Status: " + response.statusCode() + 
+                                 ", Response: " + response.body());
+                return null;
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error retrieving trace from Langfuse: " + e.getMessage());
+            return null;
+        }
+    }
 } 
