@@ -1,96 +1,79 @@
 # GitHub Labeler Configuration for CampaignNotes
 # Based on project structure: Java backend, React frontend, databases, and AI integration
+# Configuration for actions/labeler@v4
 
 documentation:
-  - changed-files:
-    - any-glob-to-any-file:
-      - "*.md"
-      - "docs/**/*"
-      - ".ai/**/*"
-      - "README*"
+  - "*.md"
+  - "docs/**/*"
+  - ".ai/**/*"
+  - "README*"
 
 frontend:
-  - changed-files:
-    - any-glob-to-any-file:
-      - "frontend/**/*"
-      - "frontend/src/**/*"
-      - "frontend/public/**/*"
-      - "*.html"
-      - "*.css"
-      - "*.js"
-      - "*.jsx"
-      - "*.ts"
-      - "*.tsx"
+  - "frontend/**/*"
+  - "frontend/src/**/*"
+  - "frontend/public/**/*"
+  - "*.html"
+  - "*.css"
+  - "*.js"
+  - "*.jsx"
+  - "*.ts"
+  - "*.tsx"
 
 backend:
-  - changed-files:
-    - any-glob-to-any-file:
-      - "app/**/*"
-      - "app/src/main/java/**/*"
-      - "*.java"
-      - "*.gradle"
-      - "gradle/**/*"
-      - "gradlew*"
+  - "app/**/*"
+  - "app/src/main/java/**/*"
+  - "*.java"
+  - "*.gradle"
+  - "gradle/**/*"
+  - "gradlew*"
 
 tests:
-  - changed-files:
-    - any-glob-to-any-file:
-      - "app/src/test/**/*"
-      - "frontend/src/**/*.test.*"
-      - "frontend/src/**/*.spec.*"
-      - "tests/**/*"
-      - "**/test_*.java"
-      - "**/*_test.js"
-      - "**/*_test.ts"
-      - "**/*Test.java"
+  - "app/src/test/**/*"
+  - "frontend/src/**/*.test.*"
+  - "frontend/src/**/*.spec.*"
+  - "tests/**/*"
+  - "**/test_*.java"
+  - "**/*_test.js"
+  - "**/*_test.ts"
+  - "**/*Test.java"
 
 configuration:
-  - changed-files:
-    - any-glob-to-any-file:
-      - "*.yml"
-      - "*.yaml"
-      - "*.json"
-      - ".github/**/*"
-      - "package.json"
-      - "package-lock.json"
-      - "build.gradle"
-      - "settings.gradle"
-      - "gradle.properties"
+  - "*.yml"
+  - "*.yaml"
+  - "*.json"
+  - ".github/**/*"
+  - "package.json"
+  - "package-lock.json"
+  - "build.gradle"
+  - "settings.gradle"
+  - "gradle.properties"
 
 database:
-  - changed-files:
-    - any-glob-to-any-file:
-      - "*.db"
-      - "*.sql"
-      - "qdrant_storage/**/*"
-      - "**/migrations/**/*"
-      - "**/schema/**/*"
+  - "*.db"
+  - "*.sql"
+  - "qdrant_storage/**/*"
+  - "**/migrations/**/*"
+  - "**/schema/**/*"
 
 ai:
-  - changed-files:
-    - any-glob-to-any-file:
-      - "**/*ai*/**/*"
-      - "**/*llm*/**/*"
-      - "**/*openrouter*/**/*"
-      - "**/*langfuse*/**/*"
-      - "**/*promptfoo*/**/*"
-      - "**/prompts/**/*"
+  - "**/*ai*/**/*"
+  - "**/*llm*/**/*"
+  - "**/*openrouter*/**/*"
+  - "**/*langfuse*/**/*"
+  - "**/*promptfoo*/**/*"
+  - "**/prompts/**/*"
 
 dependencies:
-  - changed-files:
-    - any-glob-to-any-file:
-      - "package.json"
-      - "package-lock.json"
-      - "build.gradle"
-      - "gradle/wrapper/**/*"
-      - "requirements.txt"
-      - "yarn.lock"
+  - "package.json"
+  - "package-lock.json"
+  - "build.gradle"
+  - "gradle/wrapper/**/*"
+  - "requirements.txt"
+  - "yarn.lock"
 
 ci-cd:
-  - changed-files:
-    - any-glob-to-any-file:
-      - ".github/workflows/**/*"
-      - ".github/actions/**/*"
-      - "Dockerfile"
-      - "docker-compose.*"
-      - ".dockerignore" 
+  - ".github/workflows/**/*"
+  - ".github/actions/**/*"
+  - "Dockerfile"
+  - "docker-compose.*"
+  - ".dockerignore" 
