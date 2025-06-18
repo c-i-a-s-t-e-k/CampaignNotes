@@ -1,6 +1,8 @@
 package model;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -16,6 +18,8 @@ public class Note {
     private LocalDateTime updatedAt;
     private boolean isOverride;
     private String overrideReason;
+    private boolean isOverridden;
+    private List<String> overriddenByNoteIds;
     
     /**
      * Default constructor
@@ -25,6 +29,8 @@ public class Note {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
         this.isOverride = false;
+        this.isOverridden = false;
+        this.overriddenByNoteIds = new ArrayList<>();
     }
     
     /**
@@ -112,6 +118,34 @@ public class Note {
         this.overrideReason = overrideReason;
     }
     
+    public boolean isOverridden() {
+        return isOverridden;
+    }
+    
+    public void setOverridden(boolean overridden) {
+        this.isOverridden = overridden;
+    }
+    
+    public List<String> getOverriddenByNoteIds() {
+        return new ArrayList<>(overriddenByNoteIds);
+    }
+    
+    public void addOverriddenByNoteId(String noteId) {
+        if (!overriddenByNoteIds.contains(noteId)) {
+            overriddenByNoteIds.add(noteId);
+            this.isOverridden = true;
+            this.updatedAt = LocalDateTime.now();
+        }
+    }
+    
+    public void removeOverriddenByNoteId(String noteId) {
+        overriddenByNoteIds.remove(noteId);
+        if (overriddenByNoteIds.isEmpty()) {
+            this.isOverridden = false;
+        }
+        this.updatedAt = LocalDateTime.now();
+    }
+    
     /**
      * Validates the note content according to business rules.
      * @return true if valid, false otherwise
@@ -141,10 +175,10 @@ public class Note {
     
     @Override
     public String toString() {
-        return String.format("[%s] %s - %s (%s words, override: %b)", 
+        return String.format("[%s] %s - %s (%s words, override: %b, overridden: %b)", 
             id, title, 
             content.length() > 50 ? content.substring(0, 50) + "..." : content,
             content.trim().split("\\s+").length,
-            isOverride);
+            isOverride, isOverridden);
     }
 } 

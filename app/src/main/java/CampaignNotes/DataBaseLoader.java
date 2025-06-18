@@ -257,7 +257,7 @@ public class DataBaseLoader {
      * @return true if saved successfully, false otherwise
      * @throws SQLException if a campaign with the same UUID already exists
      */
-    public boolean saveCampaign(Campain campaign) throws SQLException {
+    public boolean saveCampaignToRelativeDB(Campain campaign) throws SQLException {
         // First check if a campaign with this UUID already exists
         String checkSql = "SELECT uuid FROM campains WHERE uuid = ?";
         String insertSql = "INSERT INTO campains (uuid, name, neo4j_label, quadrant_collection_name) VALUES (?, ?, ?, ?)";
@@ -295,7 +295,7 @@ public class DataBaseLoader {
      * @return true if the campaign was successfully deleted, false otherwise
      * @throws SQLException if there is an error executing the SQL query
      */
-    public boolean deleteCampaign(String uuid) throws SQLException {
+    public boolean deleteCampaignFromRelativeDB(String uuid) throws SQLException {
         String sql = "DELETE FROM campains WHERE uuid = ?";
         
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);

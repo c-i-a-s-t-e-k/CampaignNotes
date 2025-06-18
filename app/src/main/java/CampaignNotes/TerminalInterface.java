@@ -302,12 +302,12 @@ public class TerminalInterface {
         System.out.println("(Storage implementation pending NoteService completion)");
         
         // Future implementation:
-        // boolean success = noteService.addNote(note, campaign);
-        // if (success) {
-        //     System.out.println("Note successfully added to campaign and stored with embedding!");
-        // } else {
-        //     System.err.println("Failed to store note. Please try again.");
-        // }
+        boolean success = noteService.addNote(note, campaign);
+        if (success) {
+            System.out.println("Note successfully added to campaign and stored with embedding!");
+        } else {
+            System.err.println("Failed to store note. Please try again.");
+        }
     }
     
     /**
