@@ -7,6 +7,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Base64;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+
 import io.github.cdimascio.dotenv.Dotenv;
 
 /**
@@ -20,6 +23,7 @@ public class LangfuseClient {
     private final String secretKey;
     private final String basicAuthHeader;
     private final HttpClient httpClient;
+    private final Gson gson;
     
     /**
      * Constructor that initializes the LangfuseClient with configuration from environment variables.
@@ -45,6 +49,8 @@ public class LangfuseClient {
             this.httpClient = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(10))
                     .build();
+            
+            this.gson = new Gson();
                     
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize LangfuseClient: " + e.getMessage(), e);
@@ -105,6 +111,145 @@ public class LangfuseClient {
      */
     public String getPublicKey() {
         return publicKey;
+    }
+    
+    /**
+     * Tracks an embedding generation call to Langfuse.
+     * Creates a generation entry with proper tagging for OpenAI embedding calls.
+     * 
+     * @param input the input text that was embedded
+     * @param model the embedding model used
+     * @param campaignId the campaign UUID
+     * @param noteId the note ID (if applicable)
+     * @param tokensUsed number of tokens consumed
+     * @param durationMs time taken in milliseconds
+     * @return true if tracking was successful, false otherwise
+     */
+    public boolean trackEmbedding(String input, String model, String campaignId, String noteId, 
+                                 int tokensUsed, long durationMs) {
+        try {
+            String generationEndpoint = langfuseHost + "/api/public/generations";
+            
+            // Create generation payload
+            JsonObject payload = new JsonObject();
+            payload.addProperty("name", "note-embedding");
+            payload.addProperty("model", model);
+            payload.addProperty("input", input);
+            payload.addProperty("output", "embedding-vector");
+            payload.addProperty("startTime", java.time.Instant.now().minusMillis(durationMs).toString());
+            payload.addProperty("endTime", java.time.Instant.now().toString());
+            
+            // Add usage information
+            JsonObject usage = new JsonObject();
+            usage.addProperty("input", tokensUsed);
+            usage.addProperty("output", 0);
+            usage.addProperty("total", tokensUsed);
+            payload.add("usage", usage);
+            
+            // Add metadata with campaign and note information
+            JsonObject metadata = new JsonObject();
+            metadata.addProperty("campaign_id", campaignId);
+            metadata.addProperty("note_id", noteId);
+            metadata.addProperty("system_component", "note-embedding");
+            metadata.addProperty("operation_type", "text-embedding");
+            payload.add("metadata", metadata);
+            
+            // Add tags for filtering and organization
+            payload.addProperty("tags", String.join(",", 
+                "system:campaign-notes",
+                "component:embedding",
+                "model:" + model,
+                "campaign:" + campaignId.substring(0, 8) // First 8 chars of UUID for grouping
+            ));
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(generationEndpoint))
+                    .header("Authorization", basicAuthHeader)
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+                    .build();
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            // Check if response is successful (2xx status codes)
+            boolean isSuccessful = response.statusCode() >= 200 && response.statusCode() < 300;
+            
+            if (isSuccessful) {
+                System.out.println("Embedding tracked successfully in Langfuse");
+                return true;
+            } else {
+                System.err.println("Failed to track embedding in Langfuse. Status: " + response.statusCode() + 
+                                 ", Response: " + response.body());
+                return false;
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error tracking embedding in Langfuse: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Tracks a note processing session to Langfuse.
+     * Creates a trace for the entire note processing workflow.
+     * 
+     * @param sessionName name of the session (e.g., "note-processing")
+     * @param campaignId the campaign UUID
+     * @param noteId the note ID
+     * @param userId user performing the action (if available)
+     * @return trace ID for linking related generations, or null if failed
+     */
+    public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId) {
+        try {
+            String traceEndpoint = langfuseHost + "/api/public/traces";
+            
+            // Create trace payload
+            JsonObject payload = new JsonObject();
+            payload.addProperty("name", sessionName);
+            payload.addProperty("timestamp", java.time.Instant.now().toString());
+            
+            // Add metadata
+            JsonObject metadata = new JsonObject();
+            metadata.addProperty("campaign_id", campaignId);
+            metadata.addProperty("note_id", noteId);
+            metadata.addProperty("system_component", "note-processing");
+            if (userId != null) {
+                metadata.addProperty("user_id", userId);
+            }
+            payload.add("metadata", metadata);
+            
+            // Add tags
+            payload.addProperty("tags", String.join(",", 
+                "system:campaign-notes",
+                "workflow:note-processing",
+                "campaign:" + campaignId.substring(0, 8)
+            ));
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(traceEndpoint))
+                    .header("Authorization", basicAuthHeader)
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+                    .build();
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                JsonObject responseJson = gson.fromJson(response.body(), JsonObject.class);
+                String traceId = responseJson.get("id").getAsString();
+                System.out.println("Note processing session tracked in Langfuse with trace ID: " + traceId);
+                return traceId;
+            } else {
+                System.err.println("Failed to track session in Langfuse. Status: " + response.statusCode());
+                return null;
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error tracking session in Langfuse: " + e.getMessage());
+            return null;
+        }
     }
     
     // Future methods can be added here for extended functionality:

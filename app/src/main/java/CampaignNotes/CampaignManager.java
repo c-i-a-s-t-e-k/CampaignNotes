@@ -1,6 +1,7 @@
 package CampaignNotes;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -102,5 +103,22 @@ public class CampaignManager {
             System.err.println("Error deleting campaign: " + e.getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Gets all campaigns as a list.
+     * @return List of all campaigns
+     */
+    public List<Campain> getAllCampaigns() {
+        return new ArrayList<>(campaignsMap.values());
+    }
+    
+    /**
+     * Gets a campaign by its UUID.
+     * @param uuid The UUID of the campaign to retrieve
+     * @return Campaign object or null if not found
+     */
+    public Campain getCampaignByUuid(String uuid) {
+        return campaignsMap.get(uuid);
     }
 }
