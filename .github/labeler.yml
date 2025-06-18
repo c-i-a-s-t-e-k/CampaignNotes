@@ -77,3 +77,6 @@ ci-cd:
   - "Dockerfile"
   - "docker-compose.*"
   - ".dockerignore" 
+
+bug:
+  - head-branch: ['-bug$']
