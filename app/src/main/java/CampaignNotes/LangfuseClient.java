@@ -8,6 +8,8 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -303,41 +305,44 @@ public class LangfuseClient {
     }
     
     /**
-     * Retrieves a trace from Langfuse by its ID.
+     * Retrieves a trace from Langfuse by its ID asynchronously.
      * Used for verification purposes, typically in testing scenarios.
      * 
      * @param traceId the ID of the trace to retrieve
-     * @return JsonObject containing the trace data, or null if not found/error occurred
+     * @return CompletableFuture containing JsonObject with trace data, or null if not found
+     * @throws TimeoutException if the request times out
      */
-    public JsonObject getTrace(String traceId) {
-        try {
-            String getTraceEndpoint = langfuseHost + "/api/public/traces/" + traceId;
-            
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(getTraceEndpoint))
-                    .header("Authorization", basicAuthHeader)
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(30))
-                    .GET()
-                    .build();
-            
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                return gson.fromJson(response.body(), JsonObject.class);
-            } else if (response.statusCode() == 404) {
-                System.err.println("Trace not found: " + traceId);
-                return null;
-            } else {
-                System.err.println("Failed to retrieve trace. Status: " + response.statusCode() + 
-                                 ", Response: " + response.body());
-                return null;
-            }
-            
-        } catch (Exception e) {
-            System.err.println("Error retrieving trace from Langfuse: " + e.getMessage());
-            return null;
-        }
+    public CompletableFuture<JsonObject> getTrace(String traceId) {
+        String getTraceEndpoint = langfuseHost + "/api/public/traces/" + traceId;
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(getTraceEndpoint))
+                .header("Authorization", basicAuthHeader)
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .GET()
+                .build();
+        
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                        return gson.fromJson(response.body(), JsonObject.class);
+                    } else if (response.statusCode() == 404) {
+                        System.err.println("Trace not found: " + traceId);
+                        return null;
+                    } else {
+                        System.err.println("Failed to retrieve trace. Status: " + response.statusCode() + 
+                                         ", Response: " + response.body());
+                        return null;
+                    }
+                })
+                .exceptionally(ex -> {
+                    if (ex.getCause() instanceof java.net.http.HttpTimeoutException) {
+                        throw new RuntimeException(new TimeoutException("Request timeout while retrieving trace: " + traceId));
+                    }
+                    System.err.println("Error retrieving trace from Langfuse: " + ex.getMessage());
+                    return null;
+                });
     }
 } 
 

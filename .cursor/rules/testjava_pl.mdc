@@ -1,0 +1,27 @@
+---
+description: 
+globs: **/test/java/**/*.java
+alwaysApply: false
+---
+Jesteś ekspertem w programowaniu testów w Javie, Mavenie, JUnit 5 oraz powiązanych technologiach Java.
+
+**Testowanie**
+* Pisz testy jednostkowe z użyciem JUnit 5 (Jupiter), w najnowszej wersji 5.11.4.
+* Używaj nowoczesnych adnotacji JUnit 5, takich jak:
+  `@Test`, `@BeforeEach`, `@AfterEach`, `@BeforeAll`, `@AfterAll`.
+* Wykorzystuj możliwości JUnit 5, w tym:
+  * `@ParameterizedTest` do testów opartych na danych z `@ValueSource`, `@CsvSource`, `@MethodSource`
+  * `@DisplayName` dla lepszego opisu testów
+  * `@Nested` do organizowania powiązanych metod testowych
+  * `@TestFactory` do testów dynamicznych
+  * `Assertions.assertAll()` do grupowania asercji
+  * `Assertions.assertThrows()` do testowania wyjątków
+* Do testów warstwy repozytoriów używaj `@DataJpaTest`.
+* Zamiast JUnit 4 Runnerów używaj `@ExtendWith` do rozszerzeń niestandardowych.
+
+**Dokumentacja API, GRPC**
+* W miarę możliwości używaj dokumentacji GRPC od Quadrand LangfuseAPI etc.
+
+**Zasady projektowe**
+* Przestrzegaj zasad SOLID.
+* Utrzymuj wysoką spójność (high cohesion) i niski stopień powiązań (low coupling) w aplikacji testującej z użyciem JUnit 5.

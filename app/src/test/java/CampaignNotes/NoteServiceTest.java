@@ -62,6 +62,7 @@ class NoteServiceTest {
             // Clean up test data using CampaignManager
             if (testCampaign != null) {
                 campaignManager.deleteCampaign(testCampaignUuid);
+                campaignManager.endManaging();
             }
             
         } catch (Exception e) {
@@ -194,7 +195,7 @@ class NoteServiceTest {
             System.out.println("testAddOverrideNoteFailsOnEmptyCollection completed successfully");
         }
     }
-    
+     
     /**
      * Verifies that the test note was stored correctly in Qdrant database
      */

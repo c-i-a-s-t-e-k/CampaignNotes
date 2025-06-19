@@ -1,6 +1,6 @@
 ---
 description: 
-globs: **/test/java/**/*.java
+globs: 
 alwaysApply: false
 ---
 You are an expert in Java tests programming, Maven, JUnit 5, and related Java technologies.

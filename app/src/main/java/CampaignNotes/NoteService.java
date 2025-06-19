@@ -11,7 +11,7 @@ import model.Note;
  */
 public class NoteService {
     
-    private final CampaignManager campaignManager;
+    private final CampaignManager campaignManager; 
     private final OpenAIEmbeddingService embeddingService;
     private final LangfuseClient langfuseClient;
     
