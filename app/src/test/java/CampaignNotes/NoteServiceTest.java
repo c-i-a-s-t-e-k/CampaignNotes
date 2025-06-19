@@ -243,10 +243,10 @@ class NoteServiceTest {
             
             // Test embedding tracking (which is part of addNote process)
             boolean embeddingTracked = langfuseClient.trackEmbedding(
-                testNote.getFullTextForEmbedding(),
+                null, // No specific traceId, let the client handle it
+                testNote,
                 "text-embedding-ada-002", // Default embedding model
                 testCampaignUuid,
-                testNoteId,
                 50, // Estimated tokens
                 1500 // Duration in ms
             );

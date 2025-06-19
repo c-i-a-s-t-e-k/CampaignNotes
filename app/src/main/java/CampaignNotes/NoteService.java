@@ -1,8 +1,7 @@
 package CampaignNotes;
 
-import java.util.List;
-
 import model.Campain;
+import model.EmbeddingResult;
 import model.Note;
 
 /**
@@ -59,28 +58,32 @@ public class NoteService {
             "add-note", campaign.getUuid(), note.getId(), null);
         
         try {
-            // Generate embedding
+            // Generate embedding with exact token usage
             long startTime = System.currentTimeMillis();
             String textForEmbedding = note.getFullTextForEmbedding();
-            List<Double> embedding = embeddingService.generateEmbedding(textForEmbedding);
+            
+            // Use new method that returns both embedding and exact token count
+            EmbeddingResult embeddingResult = 
+                embeddingService.generateEmbeddingWithUsage(textForEmbedding);
+            
             long durationMs = System.currentTimeMillis() - startTime;
             
-            // Track embedding generation in Langfuse
-            int estimatedTokens = estimateTokenCount(textForEmbedding);
+            // Track embedding generation in Langfuse with full note information and exact tokens
             langfuseClient.trackEmbedding(
-                textForEmbedding, 
+                traceId,
+                note,  // Pass the full note object instead of just the text
                 embeddingService.getEmbeddingModel(),
                 campaign.getUuid(),
-                note.getId(),
-                estimatedTokens,
+                embeddingResult.getTokensUsed(),  // Use exact token count from OpenAI
                 durationMs
             );
             
             // Delegate storage to CampaignManager
-            boolean stored = campaignManager.addNoteToCampaign(note, campaign, embedding);
+            boolean stored = campaignManager.addNoteToCampaign(note, campaign, embeddingResult.getEmbedding());
             
             if (stored) {
-                System.out.println("Note successfully added to campaign: " + campaign.getName());
+                System.out.println("Note successfully added to campaign: " + campaign.getName() + 
+                    " (Used " + embeddingResult.getTokensUsed() + " tokens)");
                 return true;
             } else {
                 System.err.println("Failed to store note in campaign");
@@ -91,14 +94,6 @@ public class NoteService {
             System.err.println("Error adding note: " + e.getMessage());
             return false;
         }
-    }
-    
-    /**
-     * Estimates token count for text
-     */
-    private int estimateTokenCount(String text) {
-        // Simple estimation: approximately 4 characters per token
-        return text.length() / 4;
     }
     
     /**

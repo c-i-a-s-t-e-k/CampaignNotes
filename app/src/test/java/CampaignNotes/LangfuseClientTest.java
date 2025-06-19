@@ -11,11 +11,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import com.google.gson.JsonObject;
+
+import model.Note;
 
 @DisplayName("Langfuse Client Tests")
 class LangfuseClientTest {
@@ -34,6 +37,7 @@ class LangfuseClientTest {
 
     @Test
     @DisplayName("Should successfully track embedding with all parameters")
+    @Disabled("This test relies on a legacy method that has been removed.")
     void trackEmbeddingTest() {
         // Test parameters
         String input = "This is a test note content for embedding";
@@ -43,13 +47,51 @@ class LangfuseClientTest {
         int tokensUsed = 10;
         long durationMs = 1500;
 
-        // Test the trackEmbedding method
-        boolean result = client.trackEmbedding(input, model, campaignId, noteId, tokensUsed, durationMs,
-                Arrays.asList("source:testing-function", "test:unit-test"));
-
-        // Assert that the tracking was successful
-        assertTrue(result, "Embedding tracking should be successful");
+        // This test is disabled because it uses a legacy signature.
+        // If needed, it should be updated to create a Note object.
+        // boolean result = client.trackEmbedding(null, new Note(campaignId, "Test Title", input), model, campaignId, tokensUsed, durationMs,
+        //         Arrays.asList("source:testing-function", "test:unit-test"));
+        
+        // For now, we assert true to keep the structure, but the @Disabled annotation is the key.
+        assertTrue(true);
     }
+
+    @Test
+    @DisplayName("Should successfully track embedding for a standard Note object")
+    void trackEmbeddingWithStandardNoteTest() {
+        // Tworzymy standardową notatkę
+        Note standardNote = new Note("campaign-uuid-std", "Standard Note Title", "This is the content of a standard note.");
+        String model = "text-embedding-ada-002"; // Model z prawdopodobną wyceną
+        int tokensUsed = 25;
+        long durationMs = 800;
+
+        // Wywołujemy metodę z obiektem Note, traceId=null
+        boolean result = client.trackEmbedding(null, standardNote, model, standardNote.getCampaignUuid(),
+                tokensUsed, durationMs, Arrays.asList("test-case:standard-note", "emptyTrace"));
+
+        // Sprawdzamy, czy śledzenie zakończyło się sukcesem
+        assertTrue(result, "Embedding tracking for a standard Note object should be successful");
+    }
+
+    @Test
+    @DisplayName("Should successfully track embedding for an override Note object")
+    void trackEmbeddingWithOverrideNoteTest() {
+        // Tworzymy notatkę typu override
+        Note overrideNote = new Note("campaign-uuid-override", "Override Note Title",
+                "This content overrides a previous note.", "Reason for overriding");
+        String model = "text-embedding-3-small";
+        int tokensUsed = 30;
+        long durationMs = 950;
+
+        // Wywołujemy metodę z obiektem Note, traceId=null
+        boolean result = client.trackEmbedding(null, overrideNote, model, overrideNote.getCampaignUuid(),
+                tokensUsed, durationMs, Arrays.asList("test-case:override-note", "priority:high", "emptyTrace"));
+
+        // Sprawdzamy, czy śledzenie zakończyło się sukcesem
+        assertTrue(result, "Embedding tracking for an override Note object should be successful");
+    }
+
+
 
     @Test
     @DisplayName("Should successfully track note processing session and return trace ID")
@@ -107,7 +149,9 @@ class LangfuseClientTest {
                 "Trace ID should match the requested ID"),
             () -> assertTrue(retrievedTrace.has("name"), "Trace should have name field"),
             () -> assertEquals(sessionName, retrievedTrace.get("name").getAsString(), 
-                "Trace name should match the created session name")
+                "Trace name should match the created session name"),
+            () -> assertFalse(retrievedTrace.get("userId").isJsonNull(), "Trace userId should not be null"),
+            () -> assertEquals(userId, retrievedTrace.get("userId").getAsString(), "Trace userId should match the provided user ID")
         );
         
         // Sprawdzamy metadata - powinny istnieć i zawierać oczekiwane dane

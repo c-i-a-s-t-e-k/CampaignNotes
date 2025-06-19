@@ -13,6 +13,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 
 import io.github.cdimascio.dotenv.Dotenv;
+import model.EmbeddingResult;
 
 /**
  * Service for generating embeddings using OpenAI's text-embedding-3-large model.
@@ -56,26 +57,34 @@ public class OpenAIEmbeddingService {
      * Generates embedding vector for the given text using text-embedding-3-large model.
      * 
      * @param text the text to generate embedding for
-     * @return List of Double representing the embedding vector
+     * @return EmbeddingResult containing the embedding vector and exact token count
      * @throws RuntimeException if embedding generation fails
      */
-    public List<Double> generateEmbedding(String text) {
+    public EmbeddingResult generateEmbeddingWithUsage(String text) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException("Text cannot be null or empty");
         }
         
-        return generateEmbeddings(List.of(text)).get(0);
+        List<EmbeddingResult> results = generateEmbeddingsWithUsage(List.of(text));
+        return results.get(0);
     }
     
     /**
-     * Generates embeddings for multiple texts in a single API call.
+     * Legacy method for backward compatibility. Use generateEmbeddingWithUsage for full information.
+     */
+    public List<Double> generateEmbedding(String text) {
+        return generateEmbeddingWithUsage(text).getEmbedding();
+    }
+    
+    /**
+     * Generates embeddings for multiple texts in a single API call with usage information.
      * More efficient than multiple single calls.
      * 
      * @param texts list of texts to generate embeddings for
-     * @return List of embedding vectors, one for each input text
+     * @return List of EmbeddingResult objects with embeddings and token counts
      * @throws RuntimeException if embedding generation fails
      */
-    public List<List<Double>> generateEmbeddings(List<String> texts) {
+    public List<EmbeddingResult> generateEmbeddingsWithUsage(List<String> texts) {
         if (texts == null || texts.isEmpty()) {
             throw new IllegalArgumentException("Texts list cannot be null or empty");
         }
@@ -121,18 +130,51 @@ public class OpenAIEmbeddingService {
                 throw new RuntimeException("Mismatch between input texts and embedding results");
             }
             
+            // Extract usage information - this is the total tokens used for all texts
+            int totalTokensUsed = 0;
+            if (responseJson.has("usage")) {
+                JsonObject usage = responseJson.getAsJsonObject("usage");
+                if (usage.has("total_tokens")) {
+                    totalTokensUsed = usage.get("total_tokens").getAsInt();
+                } else if (usage.has("prompt_tokens")) {
+                    // Fallback to prompt_tokens if total_tokens is not available
+                    totalTokensUsed = usage.get("prompt_tokens").getAsInt();
+                }
+            }
+            
+            // For batch requests, we distribute tokens proportionally based on text length
+            // This is an approximation as OpenAI doesn't provide per-text token counts
+            final int finalTotalTokensUsed = totalTokensUsed;
+            int totalTextLength = validTexts.stream().mapToInt(String::length).sum();
+            
             return dataArray.asList().stream()
                     .map(element -> {
                         JsonObject dataObject = element.getAsJsonObject();
                         JsonArray embeddingArray = dataObject.getAsJsonArray("embedding");
-                        return gson.fromJson(embeddingArray, new TypeToken<List<Double>>(){}.getType());
+                        List<Double> embedding = gson.fromJson(embeddingArray, new TypeToken<List<Double>>(){}.getType());
+                        
+                        // Calculate proportional token usage for this text
+                        int index = dataObject.get("index").getAsInt();
+                        String currentText = validTexts.get(index);
+                        int textTokens = validTexts.size() == 1 ? finalTotalTokensUsed : 
+                            (int) Math.ceil((double) currentText.length() / totalTextLength * finalTotalTokensUsed);
+                        
+                        return new EmbeddingResult(embedding, textTokens);
                     })
-                    .map(list -> (List<Double>) list)
                     .toList();
             
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate embeddings: " + e.getMessage(), e);
         }
+    }
+    
+    /**
+     * Legacy method for backward compatibility. Use generateEmbeddingsWithUsage for full information.
+     */
+    public List<List<Double>> generateEmbeddings(List<String> texts) {
+        return generateEmbeddingsWithUsage(texts).stream()
+                .map(EmbeddingResult::getEmbedding)
+                .toList();
     }
     
     /**
