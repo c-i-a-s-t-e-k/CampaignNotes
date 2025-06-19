@@ -3,12 +3,17 @@
  */
 package CampaignNotes;
 
-import org.junit.Test;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
-public class AppTest {
-    @Test public void appHasAGreeting() {
+@DisplayName("Application Tests")
+class AppTest {
+    
+    @Test
+    @DisplayName("Application should have a greeting message")
+    void appHasAGreeting() {
         App classUnderTest = new App();
-        assertNotNull("app should have a greeting", classUnderTest.getGreeting());
+        assertNotNull(classUnderTest.getGreeting(), "app should have a greeting");
     }
 }

@@ -161,7 +161,7 @@ public class DataBaseLoader {
         }
         if (qdrantClient != null) {
             qdrantClient.close();
-            System.out.println("Neo4j database closed");
+            System.out.println("Qdrant database closed");
         }
     }
     

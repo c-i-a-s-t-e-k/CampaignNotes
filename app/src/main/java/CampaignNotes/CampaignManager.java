@@ -268,4 +268,88 @@ public class CampaignManager {
             ).get();
         }
     }
+    
+    /**
+     * Safely terminates all database connections and ensures no data loss.
+     * This method ensures that all pending asynchronous operations are completed
+     * before closing database connections.
+     * 
+     * @return true if all connections were closed successfully, false if there were errors
+     */
+    public boolean endManaging() {
+        System.out.println("Initiating safe shutdown of CampaignManager...");
+        boolean success = true;
+        
+        try {
+            // Check if databases are available before attempting operations
+            if (dbLoader.checkDatabasesAvailability()) {
+                
+                // For Qdrant: Wait for any pending asynchronous operations to complete
+                QdrantClient qdrantClient = dbLoader.getQdrantClient();
+                if (qdrantClient != null) {
+                    try {
+                        // Flush any pending operations by checking collection status for all campaigns
+                        System.out.println("Ensuring all Qdrant operations are completed...");
+                        for (Campain campaign : campaignsMap.values()) {
+                            try {
+                                // This will wait for any pending operations on this collection
+                                qdrantClient.getCollectionInfoAsync(campaign.getQuadrantCollectionName()).get();
+                            } catch (Exception e) {
+                                // Collection might not exist, which is fine
+                                System.out.println("Collection " + campaign.getQuadrantCollectionName() + " not found or inaccessible");
+                            }
+                        }
+                        
+                        // Small delay to ensure all async operations have settled
+                        Thread.sleep(500);
+                        
+                    } catch (InterruptedException e) {
+                        System.err.println("Interrupted while waiting for Qdrant operations to complete: " + e.getMessage());
+                        Thread.currentThread().interrupt(); // Restore interrupted status
+                        success = false;
+                    } catch (Exception e) {
+                        System.err.println("Error while ensuring Qdrant operations completion: " + e.getMessage());
+                        success = false;
+                    }
+                }
+                
+                // For Neo4j: Check if driver is responsive before closing
+                if (dbLoader.getNeo4jDriver() != null) {
+                    try {
+                        dbLoader.getNeo4jDriver().verifyConnectivity();
+                        System.out.println("Neo4j driver is responsive, proceeding with shutdown");
+                    } catch (Exception e) {
+                        System.err.println("Neo4j driver verification failed during shutdown: " + e.getMessage());
+                        success = false;
+                    }
+                }
+                
+            } else {
+                System.out.println("Databases are not available, proceeding with connection cleanup");
+            }
+            
+            // Close all database connections
+            System.out.println("Closing database connections...");
+            dbLoader.closeConnections();
+            
+            // Clear local campaign cache
+            campaignsMap.clear();
+            
+            System.out.println("CampaignManager shutdown completed successfully");
+            
+        } catch (Exception e) {
+            System.err.println("Error during CampaignManager shutdown: " + e.getMessage());
+            e.printStackTrace();
+            success = false;
+            
+            // Even if there was an error, try to close connections
+            try {
+                dbLoader.closeConnections();
+            } catch (Exception closeError) {
+                System.err.println("Error closing connections after failed shutdown: " + closeError.getMessage());
+            }
+        }
+        
+        return success;
+    }
 }

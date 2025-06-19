@@ -50,5 +50,8 @@ public class App {
         System.out.println("\nStarting Terminal Interface...");
         TerminalInterface terminalInterface = new TerminalInterface();
         terminalInterface.start();
+
+
+        
     }
 }
