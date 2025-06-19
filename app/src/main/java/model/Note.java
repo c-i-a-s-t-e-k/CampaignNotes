@@ -170,7 +170,7 @@ public class Note {
      * @return combined text for embedding
      */
     public String getFullTextForEmbedding() {
-        return title + " " + content;
+        return title + "\n\n" + content;
     }
     
     @Override
