@@ -49,7 +49,7 @@ CampaignNotes/
 ## Backend - Java Application with Gradle:
 - Built using **Java 21**, leveraging the JVM ecosystem.
 - Managed by **Gradle 7.2** for dependency management and build automation.
-- Utilizes **JUnit 4 (4.13.2)** for unit testing.
+- Utilizes **JUnit 5 (5.11.4)** for unit testing with modern testing capabilities including:
 - Includes **Google Guava (30.1.1-jre)** for utility libraries.
 - Uses **Neo4j** for graph database storage (based on PRD).
 - Uses **Qdrant** for vector database and semantic search (based on PRD).

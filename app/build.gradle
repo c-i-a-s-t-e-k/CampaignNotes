@@ -17,8 +17,8 @@ repositories {
 }
 
 dependencies {
-    // Use JUnit Jupiter for testing
-    testImplementation 'junit:junit:4.13.2'
+    // Use JUnit 5 (Jupiter) for testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
 
     // This dependency is used by the application.
     implementation 'com.google.guava:guava:33.4.8-jre'
@@ -49,8 +49,8 @@ application {
 }
 
 test {
-    // Use JUnit 4 platform
-    useJUnit()
+    // Use JUnit 5 platform
+    useJUnitPlatform()
 
     // Show test results
     testLogging {

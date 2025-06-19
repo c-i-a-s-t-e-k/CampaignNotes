@@ -2,24 +2,34 @@ package CampaignNotes;
 
 import java.util.Arrays;
 
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
-public class LangfuseClientTest {
+@DisplayName("Langfuse Client Tests")
+class LangfuseClientTest {
     private LangfuseClient client;
-    @Before
-    public void setUp() {
+    
+    @BeforeEach
+    void setUp() {
         client = new LangfuseClient();
     }
 
     @Test
-    public void connectionToLangfuseTest(){
-        Assert.assertTrue(client.checkConnection());
+    @DisplayName("Should successfully connect to Langfuse")
+    void connectionToLangfuseTest() {
+        assertTrue(client.checkConnection(), "Langfuse connection should be available");
     }
 
     @Test
-    public void trackEmbeddingTest() {
+    @DisplayName("Should successfully track embedding with all parameters")
+    void trackEmbeddingTest() {
         // Test parameters
         String input = "This is a test note content for embedding";
         String model = "text-embedding-ada-002";
@@ -29,14 +39,17 @@ public class LangfuseClientTest {
         long durationMs = 1500;
         
         // Test the trackEmbedding method
-        boolean result = client.trackEmbedding(input, model, campaignId, noteId, tokensUsed, durationMs, Arrays.asList("source:testing-function", "test:unit-test"));
+        boolean result = client.trackEmbedding(input, model, campaignId, noteId, tokensUsed, durationMs, 
+            Arrays.asList("source:testing-function", "test:unit-test"));
         
         // Assert that the tracking was successful
-        Assert.assertTrue("Embedding tracking should be successful", result);
+        assertTrue(result, "Embedding tracking should be successful");
     }
 
     @Test
-    public void trackNoteProcessingSessionTest() {
+    @DisplayName("Should successfully track note processing session and return trace ID")
+    @Timeout(30)
+    void trackNoteProcessingSessionTest() {
         // Test parameters
         String sessionName = "test-note-processing";
         String campaignId = "87654321-4321-4321-4321-abcdef123456";
@@ -44,11 +57,14 @@ public class LangfuseClientTest {
         String userId = "test-user-123";
         
         // Test the trackNoteProcessingSession method
-        String traceId = client.trackNoteProcessingSession(sessionName, campaignId, noteId, userId, Arrays.asList("source:testing-function", "test:unit-test"));
+        String traceId = client.trackNoteProcessingSession(sessionName, campaignId, noteId, userId, 
+            Arrays.asList("source:testing-function", "test:unit-test"));
         
         // Assert that tracking was successful and we got a trace ID
-        Assert.assertNotNull("Should receive a trace ID", traceId);
-        Assert.assertFalse("Trace ID should not be empty", traceId.trim().isEmpty());
+        assertAll("Trace ID validation",
+            () -> assertNotNull(traceId, "Should receive a trace ID"),
+            () -> assertFalse(traceId.trim().isEmpty(), "Trace ID should not be empty")
+        );
         
         // UWAGA: Poniższy kod może nie działać z powodu opóźnień w Langfuse (15-30 sekund)
         // W praktyce ten test powinien być testem integracyjnym z odpowiednim opóźnieniem
@@ -62,35 +78,40 @@ public class LangfuseClientTest {
             
             if (retrievedTrace != null) {
                 // Sprawdzamy podstawowe właściwości trace'a
-                Assert.assertEquals("Trace name should match", sessionName, 
-                    retrievedTrace.get("name").getAsString());
+                assertEquals(sessionName, retrievedTrace.get("name").getAsString(), 
+                    "Trace name should match");
                 
                 // Sprawdzamy metadata
                 if (retrievedTrace.has("metadata") && !retrievedTrace.get("metadata").isJsonNull()) {
                     com.google.gson.JsonObject metadata = retrievedTrace.getAsJsonObject("metadata");
-                    Assert.assertEquals("Campaign ID should match", campaignId, 
-                        metadata.get("campaign_id").getAsString());
-                    Assert.assertEquals("Note ID should match", noteId, 
-                        metadata.get("note_id").getAsString());
-                    Assert.assertEquals("User ID should match", userId, 
-                        metadata.get("user_id").getAsString());
-                    Assert.assertEquals("System component should match", "note-processing", 
-                        metadata.get("system_component").getAsString());
+                    assertAll("Metadata validation",
+                        () -> assertEquals(campaignId, metadata.get("campaign_id").getAsString(), 
+                            "Campaign ID should match"),
+                        () -> assertEquals(noteId, metadata.get("note_id").getAsString(), 
+                            "Note ID should match"),
+                        () -> assertEquals(userId, metadata.get("user_id").getAsString(), 
+                            "User ID should match"),
+                        () -> assertEquals("note-processing", metadata.get("system_component").getAsString(), 
+                            "System component should match")
+                    );
                 }
                 
                 // Sprawdzamy tags
                 if (retrievedTrace.has("tags") && !retrievedTrace.get("tags").isJsonNull()) {
                     String tags = retrievedTrace.get("tags").getAsString();
-                    Assert.assertTrue("Should contain system tag", tags.contains("system:campaign-notes"));
-                    Assert.assertTrue("Should contain workflow tag", tags.contains("workflow:note-processing"));
-                    Assert.assertTrue("Should contain campaign tag", tags.contains("campaign:" + campaignId.substring(0, 8)));
+                    assertAll("Tags validation",
+                        () -> assertTrue(tags.contains("system:campaign-notes"), "Should contain system tag"),
+                        () -> assertTrue(tags.contains("workflow:note-processing"), "Should contain workflow tag"),
+                        () -> assertTrue(tags.contains("campaign:" + campaignId.substring(0, 8)), 
+                            "Should contain campaign tag")
+                    );
                 }
                 
                 System.out.println("✓ Trace verification successful - all data matches");
             } else {
                 System.err.println("⚠ WARNING: Could not retrieve trace from Langfuse API. " +
                                  "This may be due to processing delays (15-30 seconds) or connectivity issues.");
-                // Nie robimy Assert.fail() żeby test nie failował z powodu opóźnień
+                // Nie robimy fail() żeby test nie failował z powodu opóźnień
             }
             
         } catch (InterruptedException e) {
