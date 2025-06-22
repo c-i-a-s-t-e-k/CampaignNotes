@@ -5,10 +5,12 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
 
 import io.qdrant.client.QdrantClient;
+import model.ArtifactCategory;
 import model.Campain;
 
 public class Admin {
@@ -16,15 +18,206 @@ public class Admin {
     private static final String DB_PATH = "sqlite.db";
     
     /**
-     * Main method to run admin cleanup operations
+     * Main method to run admin operations
      */
     public static void main(String[] args) {
-        System.out.println("=== ADMIN CLEANUP TOOL ===");
-        System.out.println("To wyczyści WSZYSTKIE dane z baz danych!");
-        System.out.println();
+        System.out.println("=== ADMIN TOOL ===");
         
         Admin admin = new Admin();
-        admin.performFullCleanup();
+        admin.showAdminMenu();
+    }
+    
+    /**
+     * Shows admin menu with available operations
+     */
+    public void showAdminMenu() {
+        Scanner scanner = new Scanner(System.in);
+        boolean running = true;
+        
+        while (running) {
+            System.out.println("\n=== ADMIN MENU ===");
+            System.out.println("1. Database Cleanup (Delete all campaigns)");
+            System.out.println("2. Manage Artifact Categories");
+            System.out.println("3. Exit");
+            System.out.print("Choose an option (1-3): ");
+            
+            String choice = scanner.nextLine().trim();
+            
+            switch (choice) {
+                case "1":
+                    performFullCleanup();
+                    break;
+                case "2":
+                    manageArtifactCategories();
+                    break;
+                case "3":
+                    running = false;
+                    System.out.println("Exiting admin tool.");
+                    break;
+                default:
+                    System.err.println("Invalid option. Please choose 1-3.");
+                    break;
+            }
+        }
+    }
+    
+    /**
+     * Manages artifact categories
+     */
+    private void manageArtifactCategories() {
+        Scanner scanner = new Scanner(System.in);
+        boolean managing = true;
+        ArtifactCategoryService categoryService = new ArtifactCategoryService();
+        
+        while (managing) {
+            System.out.println("\n=== ARTIFACT CATEGORIES MANAGEMENT ===");
+            System.out.println("1. View all categories");
+            System.out.println("2. View categories for campaign");
+            System.out.println("3. Add category to campaign");
+            System.out.println("4. Remove category from campaign");
+            System.out.println("5. Create new category");
+            System.out.println("6. Back to admin menu");
+            System.out.print("Choose an option (1-6): ");
+            
+            String choice = scanner.nextLine().trim();
+            
+            switch (choice) {
+                case "1":
+                    viewAllCategories(categoryService);
+                    break;
+                case "2":
+                    viewCategoriesForCampaign(categoryService, scanner);
+                    break;
+                case "3":
+                    addCategoryToCampaign(categoryService, scanner);
+                    break;
+                case "4":
+                    removeCategoryFromCampaign(categoryService, scanner);
+                    break;
+                case "5":
+                    createNewCategory(categoryService, scanner);
+                    break;
+                case "6":
+                    managing = false;
+                    break;
+                default:
+                    System.err.println("Invalid option. Please choose 1-6.");
+                    break;
+            }
+        }
+    }
+    
+    private void viewAllCategories(ArtifactCategoryService categoryService) {
+        System.out.println("\n=== ALL ARTIFACT CATEGORIES ===");
+        List<ArtifactCategory> categories = categoryService.getAllCategories();
+        
+        if (categories.isEmpty()) {
+            System.out.println("No categories found.");
+            return;
+        }
+        
+        for (ArtifactCategory category : categories) {
+            System.out.println("• " + category.getName() + ": " + category.getDescription() + 
+                             " (Active: " + category.isActive() + ")");
+        }
+    }
+    
+    private void viewCategoriesForCampaign(ArtifactCategoryService categoryService, Scanner scanner) {
+        System.out.print("Enter campaign UUID: ");
+        String campaignUuid = scanner.nextLine().trim();
+        
+        if (campaignUuid.isEmpty()) {
+            System.err.println("Campaign UUID cannot be empty.");
+            return;
+        }
+        
+        System.out.println("\n=== CATEGORIES FOR CAMPAIGN " + campaignUuid + " ===");
+        Map<String, String> categories = categoryService.getCategoriesForCampaign(campaignUuid);
+        
+        if (categories.isEmpty()) {
+            System.out.println("No categories assigned to this campaign.");
+        } else {
+            for (Map.Entry<String, String> entry : categories.entrySet()) {
+                System.out.println("• " + entry.getKey() + ": " + entry.getValue());
+            }
+        }
+    }
+    
+    private void addCategoryToCampaign(ArtifactCategoryService categoryService, Scanner scanner) {
+        System.out.print("Enter campaign UUID: ");
+        String campaignUuid = scanner.nextLine().trim();
+        
+        if (campaignUuid.isEmpty()) {
+            System.err.println("Campaign UUID cannot be empty.");
+            return;
+        }
+        
+        System.out.print("Enter category name: ");
+        String categoryName = scanner.nextLine().trim();
+        
+        if (categoryName.isEmpty()) {
+            System.err.println("Category name cannot be empty.");
+            return;
+        }
+        
+        boolean success = categoryService.addCategoryToCampaign(campaignUuid, categoryName);
+        if (success) {
+            System.out.println("✅ Category added successfully.");
+        } else {
+            System.err.println("❌ Failed to add category.");
+        }
+    }
+    
+    private void removeCategoryFromCampaign(ArtifactCategoryService categoryService, Scanner scanner) {
+        System.out.print("Enter campaign UUID: ");
+        String campaignUuid = scanner.nextLine().trim();
+        
+        if (campaignUuid.isEmpty()) {
+            System.err.println("Campaign UUID cannot be empty.");
+            return;
+        }
+        
+        System.out.print("Enter category name: ");
+        String categoryName = scanner.nextLine().trim();
+        
+        if (categoryName.isEmpty()) {
+            System.err.println("Category name cannot be empty.");
+            return;
+        }
+        
+        boolean success = categoryService.removeCategoryFromCampaign(campaignUuid, categoryName);
+        if (success) {
+            System.out.println("✅ Category removed successfully.");
+        } else {
+            System.err.println("❌ Failed to remove category or category was not assigned.");
+        }
+    }
+    
+    private void createNewCategory(ArtifactCategoryService categoryService, Scanner scanner) {
+        System.out.print("Enter category name: ");
+        String name = scanner.nextLine().trim();
+        
+        if (name.isEmpty()) {
+            System.err.println("Category name cannot be empty.");
+            return;
+        }
+        
+        System.out.print("Enter category description: ");
+        String description = scanner.nextLine().trim();
+        
+        if (description.isEmpty()) {
+            System.err.println("Category description cannot be empty.");
+            return;
+        }
+        
+        ArtifactCategory category = new ArtifactCategory(name, description);
+        boolean success = categoryService.createCategory(category);
+        
+        if (success) {
+            System.out.println("✅ Category created successfully.");
+        } else {
+            System.err.println("❌ Failed to create category.");
+        }
     }
     
     /**

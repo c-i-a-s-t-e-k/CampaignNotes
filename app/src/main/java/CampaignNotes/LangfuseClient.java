@@ -490,6 +490,204 @@ public class LangfuseClient {
                 });
     }
     
+    /**
+     * Retrieves a prompt from Langfuse with variables interpolated.
+     * Used to fetch prompts for AI operations like artifact extraction.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @return the prompt content with variables interpolated, or null if not found
+     */
+    public String getPromptWithVariables(String promptName, java.util.Map<String, Object> variables) {
+        try {
+            String promptEndpoint = langfuseHost + "/api/public/prompts/" + promptName;
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(promptEndpoint))
+                    .header("Authorization", basicAuthHeader)
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .GET()
+                    .build();
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                JsonObject responseJson = gson.fromJson(response.body(), JsonObject.class);
+                String promptContent = responseJson.get("prompt").getAsString();
+                
+                // Simple variable interpolation - replace {{variable}} with values
+                if (variables != null) {
+                    for (java.util.Map.Entry<String, Object> entry : variables.entrySet()) {
+                        String placeholder = "{{" + entry.getKey() + "}}";
+                        String value = entry.getValue() != null ? entry.getValue().toString() : "";
+                        promptContent = promptContent.replace(placeholder, value);
+                    }
+                }
+                
+                System.out.println("Retrieved prompt: " + promptName);
+                return promptContent;
+                
+            } else {
+                System.err.println("Failed to retrieve prompt. Status: " + response.statusCode() + 
+                                 ", Response: " + response.body());
+                return null;
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error retrieving prompt from Langfuse: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Tracks an LLM generation to Langfuse for observability.
+     * Used for monitoring AI operations like artifact extraction.
+     * 
+     * @param traceId the trace ID to associate this generation with
+     * @param model the model used (e.g., "o1-mini", "o1")
+     * @param prompt the input prompt sent to the model
+     * @param response the response received from the model
+     * @param tokens number of tokens used
+     * @param duration duration of the operation in milliseconds
+     * @return true if tracked successfully, false otherwise
+     */
+    public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, int tokens, long duration) {
+        try {
+            String ingestionEndpoint = langfuseHost + "/api/public/ingestion";
+            
+            // Create generation body
+            JsonObject generationBody = new JsonObject();
+            generationBody.addProperty("id", java.util.UUID.randomUUID().toString());
+            generationBody.addProperty("traceId", traceId);
+            generationBody.addProperty("name", "llm-generation");
+            generationBody.addProperty("startTime", java.time.Instant.now().minusMillis(duration).toString());
+            generationBody.addProperty("endTime", java.time.Instant.now().toString());
+            generationBody.addProperty("model", model);
+            generationBody.addProperty("modelParameters", "{}"); // Empty for now
+            generationBody.addProperty("prompt", prompt);
+            generationBody.addProperty("completion", response);
+            
+            // Add usage information
+            JsonObject usage = new JsonObject();
+            usage.addProperty("promptTokens", tokens / 2); // Rough estimation
+            usage.addProperty("completionTokens", tokens / 2);
+            usage.addProperty("totalTokens", tokens);
+            generationBody.add("usage", usage);
+            
+            // Add metadata
+            JsonObject metadata = new JsonObject();
+            metadata.addProperty("component", "artifact-extraction");
+            metadata.addProperty("operation_duration_ms", duration);
+            generationBody.add("metadata", metadata);
+            
+            // Add tags
+            JsonArray tagsArray = new JsonArray();
+            tagsArray.add("system:campaign-notes");
+            tagsArray.add("component:llm-generation");
+            tagsArray.add("model:" + model);
+            generationBody.add("tags", tagsArray);
+            
+            // Create the ingestion event envelope
+            JsonObject event = new JsonObject();
+            event.addProperty("id", java.util.UUID.randomUUID().toString());
+            event.addProperty("type", "generation-create");
+            event.addProperty("timestamp", java.time.Instant.now().toString());
+            event.add("body", generationBody);
+            
+            // Create the ingestion batch payload
+            JsonObject payload = new JsonObject();
+            JsonArray batch = new JsonArray();
+            batch.add(event);
+            payload.add("batch", batch);
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(ingestionEndpoint))
+                    .header("Authorization", basicAuthHeader)
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+                    .build();
+            
+            HttpResponse<String> response1 = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            boolean isSuccessful = response1.statusCode() == 207 || (response1.statusCode() >= 200 && response1.statusCode() < 300);
+            
+            if (isSuccessful) {
+                System.out.println("LLM generation tracked successfully in Langfuse. Model: " + model + ", Tokens: " + tokens);
+                return true;
+            } else {
+                System.err.println("Failed to track LLM generation in Langfuse. Status: " + response1.statusCode() + 
+                                 ", Response: " + response1.body());
+                return false;
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error tracking LLM generation in Langfuse: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Tracks an artifact extraction workflow session to Langfuse.
+     * Creates a trace specifically for artifact processing operations.
+     * 
+     * @param sessionName name of the session (e.g., "artifact-extraction")
+     * @param campaignId the campaign UUID
+     * @param noteId the note ID being processed
+     * @return trace ID for linking related generations, or null if failed
+     */
+    public String trackArtifactExtractionWorkflow(String sessionName, String campaignId, String noteId) {
+        try {
+            String traceEndpoint = langfuseHost + "/api/public/traces";
+            
+            // Create trace payload
+            JsonObject payload = new JsonObject();
+            payload.addProperty("name", sessionName);
+            payload.addProperty("timestamp", java.time.Instant.now().toString());
+            
+            // Add metadata
+            JsonObject metadata = new JsonObject();
+            metadata.addProperty("campaign_id", campaignId);
+            metadata.addProperty("note_id", noteId);
+            metadata.addProperty("system_component", "artifact-extraction");
+            metadata.addProperty("workflow_type", "ai-powered-extraction");
+            payload.add("metadata", metadata);
+            
+            // Add tags
+            JsonArray tagsArray = new JsonArray();
+            tagsArray.add("system:campaign-notes");
+            tagsArray.add("workflow:artifact-extraction");
+            tagsArray.add("campaign:" + campaignId.substring(0, 8));
+            tagsArray.add("ai-operation:artifact-identification");
+            payload.add("tags", tagsArray);
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(traceEndpoint))
+                    .header("Authorization", basicAuthHeader)
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+                    .build();
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                JsonObject responseJson = gson.fromJson(response.body(), JsonObject.class);
+                String traceId = responseJson.get("id").getAsString();
+                System.out.println("Artifact extraction workflow tracked in Langfuse with trace ID: " + traceId);
+                return traceId;
+            } else {
+                System.err.println("Failed to track artifact extraction workflow in Langfuse. Status: " + response.statusCode());
+                return null;
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error tracking artifact extraction workflow in Langfuse: " + e.getMessage());
+            return null;
+        }
+    }
+    
     // Future methods can be added here for extended functionality:
     // - createTrace()
     // - createSpan() 

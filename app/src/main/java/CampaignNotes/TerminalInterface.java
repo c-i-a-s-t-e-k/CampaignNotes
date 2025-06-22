@@ -297,16 +297,35 @@ public class TerminalInterface {
         System.out.println("Note created successfully!");
         System.out.println("Note details: " + note.toString());
         
-        // Note: Actual storage to Qdrant would happen here when NoteService is fully working
-        System.out.println("Note would be processed and stored with embedding.");
-        System.out.println("(Storage implementation pending NoteService completion)");
+        // Process and store note with full workflow
+        System.out.println("\nProcessing note...");
+        System.out.println("⏳ Generating embedding and extracting narrative artifacts...");
         
-        // Future implementation:
-        boolean success = noteService.addNote(note, campaign);
-        if (success) {
-            System.out.println("Note successfully added to campaign and stored with embedding!");
-        } else {
-            System.err.println("Failed to store note. Please try again.");
+        try {
+            boolean success = noteService.addNote(note, campaign);
+            if (success) {
+                System.out.println("✅ Note successfully added to campaign!");
+                System.out.println("📝 Note stored with embedding in Qdrant");
+                System.out.println("🤖 AI-powered artifact extraction completed");
+                System.out.println("📊 Data saved to Neo4j graph database");
+                
+                // Show completion message
+                System.out.println("\n" + "=".repeat(50));
+                System.out.println("Note processing workflow completed successfully!");
+                System.out.println("Your note has been:");
+                System.out.println("• Validated and stored");
+                System.out.println("• Embedded using OpenAI models");
+                System.out.println("• Analyzed for narrative artifacts");
+                System.out.println("• Connected to campaign knowledge graph");
+                System.out.println("=".repeat(50));
+                
+            } else {
+                System.err.println("❌ Failed to store note. Please try again.");
+                System.err.println("Please check your database connections and try again.");
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error processing note: " + e.getMessage());
+            System.err.println("The system encountered an unexpected error. Please check logs and try again.");
         }
     }
     
@@ -355,9 +374,38 @@ public class TerminalInterface {
         System.out.println("Override note created successfully!");
         System.out.println("Note details: " + note.toString());
         
-        // Note: Actual storage would happen here when NoteService is fully working
-        System.out.println("Override note would be processed and stored with embedding.");
-        System.out.println("(Storage implementation pending NoteService completion)");
+        // Process and store override note with full workflow
+        System.out.println("\nProcessing override note...");
+        System.out.println("⏳ Generating embedding and extracting narrative artifacts...");
+        
+        try {
+            boolean success = noteService.addNote(note, campaign);
+            if (success) {
+                System.out.println("✅ Override note successfully added to campaign!");
+                System.out.println("📝 Note stored with embedding in Qdrant");
+                System.out.println("🤖 AI-powered artifact extraction completed");
+                System.out.println("📊 Data saved to Neo4j graph database");
+                System.out.println("🔄 Override relationships processed");
+                
+                // Show completion message
+                System.out.println("\n" + "=".repeat(50));
+                System.out.println("Override note processing workflow completed!");
+                System.out.println("Your override note has been:");
+                System.out.println("• Validated and stored");
+                System.out.println("• Embedded using OpenAI models");
+                System.out.println("• Analyzed for narrative artifacts");
+                System.out.println("• Connected to campaign knowledge graph");
+                System.out.println("• Marked as override content");
+                System.out.println("=".repeat(50));
+                
+            } else {
+                System.err.println("❌ Failed to store override note. Please try again.");
+                System.err.println("Please check your database connections and try again.");
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error processing override note: " + e.getMessage());
+            System.err.println("The system encountered an unexpected error. Please check logs and try again.");
+        }
     }
     
     /**
