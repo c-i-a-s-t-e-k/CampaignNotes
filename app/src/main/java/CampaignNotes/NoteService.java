@@ -1,5 +1,7 @@
 package CampaignNotes;
 
+import CampaignNotes.llm.OpenAIEmbeddingService;
+import CampaignNotes.tracking.LangfuseClient;
 import model.ArtifactProcessingResult;
 import model.Campain;
 import model.EmbeddingResult;

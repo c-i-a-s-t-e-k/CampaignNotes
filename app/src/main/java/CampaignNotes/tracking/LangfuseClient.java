@@ -1,4 +1,4 @@
-package CampaignNotes;
+package CampaignNotes.tracking;
 
 import java.net.URI;
 import java.net.http.HttpClient;
