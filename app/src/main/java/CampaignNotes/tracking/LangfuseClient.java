@@ -1,9 +1,11 @@
 package CampaignNotes.tracking;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Collections;
@@ -668,7 +670,8 @@ public class LangfuseClient {
      */
     private JsonObject fetchPromptFromAPI(String promptName, Integer version, String label, int maxRetries) {
         // Use v2 API endpoint as recommended by Langfuse documentation
-        StringBuilder urlBuilder = new StringBuilder(langfuseHost + "/api/public/v2/prompts/" + promptName);
+        String encodedPromptName = URLEncoder.encode(promptName, StandardCharsets.UTF_8);
+        StringBuilder urlBuilder = new StringBuilder(langfuseHost + "/api/public/v2/prompts/" + encodedPromptName);
             
         // Add query parameters for version or label
         java.util.List<String> queryParams = new java.util.ArrayList<>();

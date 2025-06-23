@@ -11,13 +11,15 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
+import com.openai.client.OpenAIClient;
+import com.openai.client.okhttp.OpenAIOkHttpClient;
 
 import io.github.cdimascio.dotenv.Dotenv;
 import model.EmbeddingResult;
 
 /**
  * Service for generating embeddings using OpenAI's text-embedding-3-large model.
- * Handles communication with OpenAI API for converting text to vector embeddings.
+ * Currently uses HTTP calls but has SDK client prepared for future migration.
  */
 public class OpenAIEmbeddingService {
     
@@ -25,6 +27,7 @@ public class OpenAIEmbeddingService {
     private static final int EMBEDDING_DIMENSION = 3072; // text-embedding-3-large dimension
     private static final String OPENAI_API_URL = "https://api.openai.com/v1/embeddings";
     
+    private final OpenAIClient client; // SDK client for future use
     private final HttpClient httpClient;
     private final String apiKey;
     private final Gson gson;
@@ -41,7 +44,13 @@ public class OpenAIEmbeddingService {
                 throw new IllegalStateException("OPENAI_API_KEY must be set in environment variables");
             }
             
-            // Initialize HTTP client with timeout settings
+            // Initialize OpenAI SDK client for future migration
+            this.client = OpenAIOkHttpClient.builder()
+                    .apiKey(apiKey)
+                    .timeout(Duration.ofMinutes(1))
+                    .build();
+            
+            // Initialize HTTP client for current implementation
             this.httpClient = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(10))
                     .build();
@@ -208,5 +217,15 @@ public class OpenAIEmbeddingService {
             System.err.println("OpenAI service connection test failed: " + e.getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Gets the initialized SDK client for potential future use.
+     * Currently not used in main implementation.
+     * 
+     * @return the OpenAI SDK client
+     */
+    protected OpenAIClient getSdkClient() {
+        return client;
     }
 } 

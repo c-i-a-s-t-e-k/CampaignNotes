@@ -6,22 +6,26 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
-import CampaignNotes.tracking.LangfuseClient;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.openai.client.OpenAIClient;
+import com.openai.client.okhttp.OpenAIOkHttpClient;
 
+import CampaignNotes.tracking.LangfuseClient;
 import io.github.cdimascio.dotenv.Dotenv;
 import model.LLMResponse;
 
 /**
  * Service for communicating with OpenAI API for LLM operations.
+ * Currently uses HTTP calls but has SDK client prepared for future migration.
  * Provides functionality to generate responses using o1 and o1-mini models.
  */
 public class OpenAILLMService {
     
     private final String openaiApiKey;
     private final String openaiApiUrl;
+    private final OpenAIClient client; // SDK client for future use
     private final HttpClient httpClient;
     private final Gson gson;
     private final LangfuseClient langfuseClient;
@@ -40,7 +44,14 @@ public class OpenAILLMService {
                 throw new IllegalStateException("OPENAI_API_KEY must be set in environment variables");
             }
             
-            // Initialize HTTP client with reasonable timeouts
+            // Initialize OpenAI SDK client for future migration
+            this.client = OpenAIOkHttpClient.builder()
+                    .apiKey(openaiApiKey)
+                    .baseUrl(openaiApiUrl)
+                    .timeout(Duration.ofMinutes(2))
+                    .build();
+            
+            // Initialize HTTP client for current implementation
             this.httpClient = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(10))
                     .build();
@@ -67,6 +78,14 @@ public class OpenAILLMService {
                 throw new IllegalStateException("OPENAI_API_KEY must be set in environment variables");
             }
             
+            // Initialize OpenAI SDK client for future migration
+            this.client = OpenAIOkHttpClient.builder()
+                    .apiKey(openaiApiKey)
+                    .baseUrl(openaiApiUrl)
+                    .timeout(Duration.ofMinutes(2))
+                    .build();
+            
+            // Initialize HTTP client for current implementation
             this.httpClient = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(10))
                     .build();
@@ -78,31 +97,7 @@ public class OpenAILLMService {
             throw new RuntimeException("Failed to initialize OpenAILLMService: " + e.getMessage(), e);
         }
     }
-    
-    /**
-     * Generates a response using the o1-mini model.
-     * Optimized for fast responses and lower cost, suitable for artifact extraction.
-     * 
-     * @param systemPrompt the system prompt (note: o1 models don't use system messages traditionally)
-     * @param inputPrompt the user input prompt
-     * @return LLMResponse with the generated content and metadata
-     */
-    public LLMResponse generateWithO1Mini(String systemPrompt, String inputPrompt) {
-        return generateWithModel("o1-mini", systemPrompt, inputPrompt);
-    }
-    
-    /**
-     * Generates a response using the o1 model.
-     * More powerful but slower and more expensive, suitable for relationship extraction.
-     * 
-     * @param systemPrompt the system prompt
-     * @param inputPrompt the user input prompt
-     * @return LLMResponse with the generated content and metadata
-     */
-    public LLMResponse generateWithO1(String systemPrompt, String inputPrompt) {
-        return generateWithModel("o1", systemPrompt, inputPrompt);
-    }
-    
+
     /**
      * Generates a response with retry logic.
      * 
@@ -160,8 +155,8 @@ public class OpenAILLMService {
             // Create request payload
             JsonObject payload = new JsonObject();
             payload.addProperty("model", model);
-            payload.addProperty("max_tokens", 4000);
-            payload.addProperty("temperature", 0.3);
+            payload.addProperty("max_completion_tokens", 4000);
+//            payload.addProperty("temperature", 0.3);
             
             // Create messages array
             JsonArray messages = new JsonArray();
@@ -271,5 +266,15 @@ public class OpenAILLMService {
      */
     public String getApiUrl() {
         return openaiApiUrl;
+    }
+    
+    /**
+     * Gets the initialized SDK client for potential future use.
+     * Currently not used in main implementation.
+     * 
+     * @return the OpenAI SDK client
+     */
+    protected OpenAIClient getSdkClient() {
+        return client;
     }
 } 

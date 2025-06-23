@@ -164,15 +164,16 @@ public class ArtifactGraphService {
         try {
             // Get NAE prompt from Langfuse
             Map<String, Object> promptVariables = new HashMap<>();
-            promptVariables.put("note_content", noteContent);
-            promptVariables.put("categories", formatCategoriesForPrompt(categories));
+            promptVariables.put("CATEGORIES", formatCategoriesForPrompt(categories));
             
-            String systemPrompt = langfuseClient.getPromptWithVariables("Narrative Artefact Extractor (NAE)", promptVariables);
+            String systemPrompt = langfuseClient.getPromptWithVariables("NarrativeArtefactExtractor", promptVariables);
             if (systemPrompt == null) {
                 // Fallback prompt
                 systemPrompt = createFallbackNAEPrompt(categories);
             }
-            
+
+
+            //TODO: remade the creating of the input prompt
             String inputPrompt = "Please analyze the following campaign note and extract narrative artifacts:\n\n" + noteContent;
             
             // Generate with retry
@@ -216,17 +217,16 @@ public class ArtifactGraphService {
         try {
             // Get ARE prompt from Langfuse using enhanced method with production label
             Map<String, Object> promptVariables = new HashMap<>();
-            promptVariables.put("note_content", noteContent);
-            promptVariables.put("artifacts", formatArtifactsForPrompt(artifacts));
-            
+
             String systemPrompt = langfuseClient.getPromptWithLabel(
-                    "Artefact Relationship Extractor", "production", promptVariables);
+                    "ArtefactRelationshipExtractor", "production", promptVariables);
             if (systemPrompt == null) {
                 // Fallback prompt
                 systemPrompt = createFallbackAREPrompt(artifacts);
                 System.out.println("Using fallback ARE prompt due to API fetch failure");
             }
-            
+
+            //TODO: remade the creating of the input prompt
             String inputPrompt = "Please analyze relationships between the extracted artifacts in this campaign note:\n\n" + noteContent;
             
             // Generate with retry using o1 (more powerful for relationship detection)

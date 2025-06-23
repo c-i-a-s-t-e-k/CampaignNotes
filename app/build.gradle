@@ -39,7 +39,10 @@ dependencies {
     
     // Langfuse integration - using built-in Java 11+ HttpClient, no additional dependency needed
     
-    // Gson for JSON parsing in OpenAI API calls
+    // OpenAI Java SDK - official OpenAI SDK for Java
+    implementation 'com.openai:openai-java:2.8.1'
+    
+    // Gson for JSON parsing - kept for existing code compatibility
     implementation 'com.google.code.gson:gson:2.10.1'
 }
 

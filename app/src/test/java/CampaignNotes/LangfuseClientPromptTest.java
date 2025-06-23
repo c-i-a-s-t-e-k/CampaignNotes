@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
  * Uses real TestPrompt from Langfuse service for integration testing.
  */
 @DisplayName("Enhanced Prompt Management Tests")
-class LangfuseClientEnhancedPromptTest {
+class LangfuseClientPromptTest {
     
     private LangfuseClient client;
     private static final String TEST_PROMPT_NAME = "TestPrompt";
