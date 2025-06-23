@@ -1,6 +1,9 @@
 package CampaignNotes;
 
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -91,8 +94,6 @@ class LangfuseClientTest {
         assertTrue(result, "Embedding tracking for an override Note object should be successful");
     }
 
-
-
     @Test
     @DisplayName("Should successfully track note processing session and return trace ID")
     @Timeout(30)
@@ -112,7 +113,6 @@ class LangfuseClientTest {
                 () -> assertNotNull(traceId, "Should receive a trace ID"),
                 () -> assertFalse(traceId.trim().isEmpty(), "Trace ID should not be empty")
         );
-
     }
 
     @Test
@@ -240,5 +240,4 @@ class LangfuseClientTest {
         // Sprawdzamy czy funkcja prawidłowo zwraca null dla nieistniejącego trace
         assertNull(result, "Should return null for non-existent trace ID");
     }
-
 }

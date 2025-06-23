@@ -165,7 +165,7 @@ public class ArtifactGraphService {
             promptVariables.put("note_content", noteContent);
             promptVariables.put("categories", formatCategoriesForPrompt(categories));
             
-            String systemPrompt = langfuseClient.getPromptWithVariables("NAE", promptVariables);
+            String systemPrompt = langfuseClient.getPromptWithVariables("Narrative Artefact Extractor (NAE)", promptVariables);
             if (systemPrompt == null) {
                 // Fallback prompt
                 systemPrompt = createFallbackNAEPrompt(categories);
@@ -212,15 +212,17 @@ public class ArtifactGraphService {
         List<Relationship> relationships = new ArrayList<>();
         
         try {
-            // Get ARE prompt from Langfuse
+            // Get ARE prompt from Langfuse using enhanced method with production label
             Map<String, Object> promptVariables = new HashMap<>();
             promptVariables.put("note_content", noteContent);
             promptVariables.put("artifacts", formatArtifactsForPrompt(artifacts));
             
-            String systemPrompt = langfuseClient.getPromptWithVariables("ARE", promptVariables);
+            String systemPrompt = langfuseClient.getPromptWithLabel(
+                    "Artefact Relationship Extractor", "production", promptVariables);
             if (systemPrompt == null) {
                 // Fallback prompt
                 systemPrompt = createFallbackAREPrompt(artifacts);
+                System.out.println("Using fallback ARE prompt due to API fetch failure");
             }
             
             String inputPrompt = "Please analyze relationships between the extracted artifacts in this campaign note:\n\n" + noteContent;
