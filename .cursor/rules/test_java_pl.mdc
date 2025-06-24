@@ -6,6 +6,7 @@ alwaysApply: false
 Jesteś ekspertem w programowaniu testów w Javie, Mavenie, JUnit 5 oraz powiązanych technologiach Java.
 
 **Testowanie**
+* Pamiętaj o kosztownośći zapytań API do usług OpenAI
 * Pisz testy jednostkowe z użyciem JUnit 5 (Jupiter), w najnowszej wersji 5.11.4.
 * Używaj nowoczesnych adnotacji JUnit 5, takich jak:
   `@Test`, `@BeforeEach`, `@AfterEach`, `@BeforeAll`, `@AfterAll`.

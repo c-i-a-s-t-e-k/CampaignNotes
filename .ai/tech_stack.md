@@ -5,7 +5,7 @@
 CampaignNotes/
 ├── app/                    # Aplikacja backendowa Java
 │   ├── src/main/java/      # Kod źródłowy Java
-│   ├── src/test/           # Testy jednostkowe
+│   ├── src/test/           # Testy jednostkowe i integracyjne
 │   ├── build.gradle        # Konfiguracja Gradle
 │   └── sqlite.db           # Baza danych użytkowników i kampanii
 ├── frontend/               # Aplikacja React

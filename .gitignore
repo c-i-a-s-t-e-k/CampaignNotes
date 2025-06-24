@@ -52,7 +52,7 @@ sqlite.db
 #my lesset scripts
 start_dbs.sh
 clear_branches.sh
-basesDashbordsURL.txt
+bases_dashboards_url.txt
 
 #tmp files
 tmp/
