@@ -5,14 +5,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import CampaignNotes.llm.OpenAILLMService;
-import CampaignNotes.tracking.LangfuseClient;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import CampaignNotes.llm.OpenAILLMService;
+import CampaignNotes.tracking.LangfuseClient;
 import model.Artifact;
 import model.ArtifactProcessingResult;
 import model.Campain;
@@ -172,9 +172,8 @@ public class ArtifactGraphService {
                 systemPrompt = createFallbackNAEPrompt(categories);
             }
 
-
-            //TODO: remade the creating of the input prompt
-            String inputPrompt = "Please analyze the following campaign note and extract narrative artifacts:\n\n" + noteContent;
+            // Create JSON input prompt with only 'note' field as required by NAE prompt
+            String inputPrompt = createNAEInputPrompt(noteContent);
             
             // Generate with retry
             LLMResponse response = llmService.generateWithRetry("o1-mini", systemPrompt, inputPrompt, 1);
@@ -187,6 +186,7 @@ public class ArtifactGraphService {
             }
             
             if (response.isSuccessful()) {
+//                System.out.println("\n\nFor DEBUG::" + response.getContent() + "\n\n");
                 artifacts = parseArtifactsFromResponse(response.getContent(), note, campaign);
                 System.out.println("Extracted " + artifacts.size() + " artifacts using o1-mini");
             } else {
@@ -226,11 +226,11 @@ public class ArtifactGraphService {
                 System.out.println("Using fallback ARE prompt due to API fetch failure");
             }
 
-            //TODO: remade the creating of the input prompt
-            String inputPrompt = "Please analyze relationships between the extracted artifacts in this campaign note:\n\n" + noteContent;
-            
+            // Create JSON input prompt with 'note' and 'artefacts' fields as required by ARE prompt
+            String inputPrompt = createAREInputPrompt(noteContent, artifacts);
+
             // Generate with retry using o1 (more powerful for relationship detection)
-            LLMResponse response = llmService.generateWithRetry("o1", systemPrompt, inputPrompt, 1);
+            LLMResponse response = llmService.generateWithRetry("o1-mini", systemPrompt, inputPrompt, 1);
             
             // Track in Langfuse
             if (traceId != null && response.isSuccessful()) {
@@ -271,7 +271,7 @@ public class ArtifactGraphService {
             
             try (var session = driver.session()) {
                 // Start transaction
-                return session.writeTransaction(tx -> {
+                return session.executeWrite(tx -> {
                     try {
                         // Create artifacts as nodes
                         for (Artifact artifact : artifacts) {
@@ -279,7 +279,7 @@ public class ArtifactGraphService {
                                 "MERGE (a:%s {name: $name, campaign_uuid: $campaign_uuid}) " +
                                 "SET a.type = $type, a.description = $description, a.note_id = $note_id, " +
                                 "a.created_at = datetime(), a.id = $id",
-                                campaign.getNeo4jLabel() + "_Artifact"
+                                sanitizeNeo4jLabel(campaign.getNeo4jLabel()) + "_Artifact"
                             );
                             
                             Map<String, Object> params = Map.of(
@@ -302,7 +302,7 @@ public class ArtifactGraphService {
                                 "MERGE (a1)-[r:%s {label: $label}]->(a2) " +
                                 "SET r.description = $description, r.reasoning = $reasoning, " +
                                 "r.note_id = $note_id, r.created_at = datetime(), r.id = $id",
-                                campaign.getNeo4jLabel(), campaign.getNeo4jLabel(), 
+                                sanitizeNeo4jLabel(campaign.getNeo4jLabel()), sanitizeNeo4jLabel(campaign.getNeo4jLabel()), 
                                 sanitizeRelationshipType(relationship.getLabel())
                             );
                             
@@ -339,6 +339,42 @@ public class ArtifactGraphService {
     
     // Helper methods for prompt formatting and parsing
     
+    /**
+     * Creates JSON input prompt for NarrativeArtefactExtractor with only 'note' field.
+     * 
+     * @param noteContent the content of the note to analyze
+     * @return JSON string containing the note content
+     */
+    private String createNAEInputPrompt(String noteContent) {
+        Map<String, Object> inputData = new HashMap<>();
+        inputData.put("note", noteContent);
+        return gson.toJson(inputData);
+    }
+    
+    /**
+     * Creates JSON input prompt for ArtefactRelationshipExtractor with 'note' and 'artefacts' fields.
+     * 
+     * @param noteContent the content of the note to analyze
+     * @param artifacts the list of previously extracted artifacts
+     * @return JSON string containing the note content and artifacts
+     */
+    private String createAREInputPrompt(String noteContent, List<Artifact> artifacts) {
+        Map<String, Object> inputData = new HashMap<>();
+        inputData.put("note", noteContent);
+        
+        // Create list of artifact objects with name and type
+        List<Map<String, Object>> artifactsList = new ArrayList<>();
+        for (Artifact artifact : artifacts) {
+            Map<String, Object> artifactData = new HashMap<>();
+            artifactData.put("name", artifact.getName());
+            artifactData.put("type", artifact.getType());
+            artifactsList.add(artifactData);
+        }
+        inputData.put("artefacts", artifactsList);
+        
+        return gson.toJson(inputData);
+    }
+    
     private String formatCategoriesForPrompt(Map<String, String> categories) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> entry : categories.entrySet()) {
@@ -369,15 +405,37 @@ public class ArtifactGraphService {
                "\nReturn results as JSON array with objects containing: source, target, label, description, reasoning.";
     }
     
+    private String extractJsonFromResponse(String response) {
+        String cleanedResponse = response;
+        // Find JSON object content (handle cases where AI adds explanatory text)
+        int jsonStart = cleanedResponse.indexOf('{');
+        int jsonEnd = cleanedResponse.lastIndexOf('}') + 1;
+        
+        if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
+            return cleanedResponse.substring(jsonStart, jsonEnd);
+        }
+        
+        throw new RuntimeException("No valid JSON found in response");
+    }
+    
     private List<Artifact> parseArtifactsFromResponse(String response, Note note, Campain campaign) {
         List<Artifact> artifacts = new ArrayList<>();
         
         try {
-            // Try to extract JSON from the response
+            // Extract JSON from the response
             String jsonContent = extractJsonFromResponse(response);
-            JsonArray jsonArray = JsonParser.parseString(jsonContent).getAsJsonArray();
+            JsonObject jsonObject = JsonParser.parseString(jsonContent).getAsJsonObject();
             
-            for (JsonElement element : jsonArray) {
+            // Check if it has "artefacts" field (note the British spelling)
+            JsonArray artifactsArray;
+            if (jsonObject.has("artefacts")) {
+                artifactsArray = jsonObject.getAsJsonArray("artefacts");
+            } else {
+                // Fallback: assume the entire response is an array
+                artifactsArray = JsonParser.parseString(jsonContent).getAsJsonArray();
+            }
+            
+            for (JsonElement element : artifactsArray) {
                 JsonObject obj = element.getAsJsonObject();
                 
                 String name = obj.get("name").getAsString();
@@ -401,11 +459,22 @@ public class ArtifactGraphService {
         List<Relationship> relationships = new ArrayList<>();
         
         try {
-            // Try to extract JSON from the response
+            // Extract JSON from the response
             String jsonContent = extractJsonFromResponse(response);
-            JsonArray jsonArray = JsonParser.parseString(jsonContent).getAsJsonArray();
+            JsonObject jsonObject = JsonParser.parseString(jsonContent).getAsJsonObject();
             
-            for (JsonElement element : jsonArray) {
+            // Check if it has "relations" field
+            JsonArray relationsArray;
+            if (jsonObject.has("relations")) {
+                relationsArray = jsonObject.getAsJsonArray("relations");
+            } else if (jsonObject.has("relationships")) {
+                relationsArray = jsonObject.getAsJsonArray("relationships");
+            } else {
+                // Fallback: assume the entire response is an array
+                relationsArray = JsonParser.parseString(jsonContent).getAsJsonArray();
+            }
+            
+            for (JsonElement element : relationsArray) {
                 JsonObject obj = element.getAsJsonObject();
                 
                 String source = obj.get("source").getAsString();
@@ -424,18 +493,6 @@ public class ArtifactGraphService {
         }
         
         return relationships;
-    }
-    
-    private String extractJsonFromResponse(String response) {
-        // Find JSON content in the response (handle cases where AI adds explanatory text)
-        int jsonStart = response.indexOf('[');
-        int jsonEnd = response.lastIndexOf(']') + 1;
-        
-        if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
-            return response.substring(jsonStart, jsonEnd);
-        }
-        
-        throw new RuntimeException("No valid JSON found in response");
     }
     
     private List<Artifact> parseArtifactsWithFallback(String response, Note note, Campain campaign) {
@@ -463,5 +520,24 @@ public class ArtifactGraphService {
         return label.toUpperCase()
                    .replaceAll("[^A-Z0-9_]", "_")
                    .replaceAll("_{2,}", "_");
+    }
+    
+    /**
+     * Sanitizes a string to be used as a Neo4j label.
+     * Neo4j labels cannot contain spaces, hyphens, or special characters.
+     * Only letters, numbers, and underscores are allowed.
+     * 
+     * @param input the input string to sanitize
+     * @return sanitized label suitable for Neo4j
+     */
+    private String sanitizeNeo4jLabel(String input) {
+        if (input == null || input.trim().isEmpty()) {
+            return "DefaultLabel";
+        }
+        
+        return input.replaceAll("[^a-zA-Z0-9_]", "_")  // Replace invalid characters with underscore
+                   .replaceAll("_{2,}", "_")           // Replace multiple underscores with single
+                   .replaceAll("^_+|_+$", "")         // Remove leading/trailing underscores
+                   .substring(0, Math.min(input.length(), 100)); // Limit length to prevent very long labels
     }
 } 
