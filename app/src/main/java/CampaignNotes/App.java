@@ -3,6 +3,8 @@
  */
 package CampaignNotes;
 
+import CampaignNotes.tracking.LangfuseClient;
+
 import java.sql.DriverManager;
 import java.sql.SQLException;
 

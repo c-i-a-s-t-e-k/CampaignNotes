@@ -1,5 +1,8 @@
 package model;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +13,8 @@ import java.util.UUID;
  * Each note belongs to a specific campaign and contains content that can be embedded and stored in Qdrant.
  */
 public class Note {
+    private static final UUID NAMESPACE_UUID = UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+    
     private String id;
     private String campaignUuid;
     private String title;
@@ -25,7 +30,6 @@ public class Note {
      * Default constructor
      */
     public Note() {
-        this.id = UUID.randomUUID().toString();
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
         this.isOverride = false;
@@ -41,6 +45,7 @@ public class Note {
         this.campaignUuid = campaignUuid;
         this.title = title;
         this.content = content;
+        this.id = generateContentBasedUUID(title, content);
     }
     
     /**
@@ -50,6 +55,84 @@ public class Note {
         this(campaignUuid, title, content);
         this.isOverride = true;
         this.overrideReason = overrideReason;
+    }
+    
+    /**
+     * Generates a UUID v5 based on the note's title and content.
+     * This ensures that notes with identical content get the same UUID, preventing duplicates.
+     * @param title the note title
+     * @param content the note content
+     * @return UUID v5 string
+     */
+    private String generateContentBasedUUID(String title, String content) {
+        try {
+            // Combine title and content for hashing
+            String combinedContent = (title != null ? title : "") + "\n\n" + (content != null ? content : "");
+            
+            // Create SHA-1 hash of the combined content
+            MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+            byte[] hash = sha1.digest(combinedContent.getBytes(StandardCharsets.UTF_8));
+            
+            // Convert namespace UUID to bytes
+            byte[] namespaceBytes = toBytes(NAMESPACE_UUID);
+            
+            // Combine namespace and hash
+            byte[] combined = new byte[namespaceBytes.length + hash.length];
+            System.arraycopy(namespaceBytes, 0, combined, 0, namespaceBytes.length);
+            System.arraycopy(hash, 0, combined, namespaceBytes.length, hash.length);
+            
+            // Hash the combined bytes
+            byte[] finalHash = sha1.digest(combined);
+            
+            // Set version (5) and variant bits according to RFC 4122
+            finalHash[6] &= 0x0F;  // Clear version bits
+            finalHash[6] |= 0x50;  // Set version to 5
+            finalHash[8] &= 0x3F;  // Clear variant bits
+            finalHash[8] |= 0x80;  // Set variant to 10
+            
+            // Convert to UUID
+            return fromBytes(finalHash).toString();
+            
+        } catch (NoSuchAlgorithmException e) {
+            // Fallback to random UUID if SHA-1 is not available
+            System.err.println("SHA-1 not available, falling back to random UUID: " + e.getMessage());
+            return UUID.randomUUID().toString();
+        }
+    }
+    
+    /**
+     * Converts UUID to byte array
+     */
+    private byte[] toBytes(UUID uuid) {
+        long msb = uuid.getMostSignificantBits();
+        long lsb = uuid.getLeastSignificantBits();
+        byte[] buffer = new byte[16];
+        
+        for (int i = 0; i < 8; i++) {
+            buffer[i] = (byte) (msb >>> 8 * (7 - i));
+        }
+        for (int i = 8; i < 16; i++) {
+            buffer[i] = (byte) (lsb >>> 8 * (7 - i));
+        }
+        
+        return buffer;
+    }
+    
+    /**
+     * Converts byte array to UUID
+     */
+    private UUID fromBytes(byte[] bytes) {
+        long msb = 0;
+        long lsb = 0;
+        
+        for (int i = 0; i < 8; i++) {
+            msb = (msb << 8) | (bytes[i] & 0xFF);
+        }
+        for (int i = 8; i < 16; i++) {
+            lsb = (lsb << 8) | (bytes[i] & 0xFF);
+        }
+        
+        return new UUID(msb, lsb);
     }
     
     // Getters and setters

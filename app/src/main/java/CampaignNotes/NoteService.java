@@ -1,5 +1,8 @@
 package CampaignNotes;
 
+import CampaignNotes.llm.OpenAIEmbeddingService;
+import CampaignNotes.tracking.LangfuseClient;
+import model.ArtifactProcessingResult;
 import model.Campain;
 import model.EmbeddingResult;
 import model.Note;
@@ -13,6 +16,7 @@ public class NoteService {
     private final CampaignManager campaignManager; 
     private final OpenAIEmbeddingService embeddingService;
     private final LangfuseClient langfuseClient;
+    private final ArtifactGraphService artifactService;
     
     /**
      * Constructor initializes all required services.
@@ -21,11 +25,12 @@ public class NoteService {
         this.campaignManager = new CampaignManager();
         this.embeddingService = new OpenAIEmbeddingService();
         this.langfuseClient = new LangfuseClient();
+        this.artifactService = new ArtifactGraphService();
     }
     
     /**
      * Adds a note to the specified campaign.
-     * Validates the note, generates embedding, and delegates storage to CampaignManager.
+     * Validates the note, generates embedding, stores it, and processes artifacts.
      * For override notes, ensures that there are existing notes to override.
      * 
      * @param note the note to add
@@ -84,6 +89,26 @@ public class NoteService {
             if (stored) {
                 System.out.println("Note successfully added to campaign: " + campaign.getName() + 
                     " (Used " + embeddingResult.getTokensUsed() + " tokens)");
+                
+                // Process artifacts after successful storage
+                System.out.println("Starting artifact extraction for note: " + note.getId());
+                try {
+                    ArtifactProcessingResult artifactResult = artifactService.processNoteArtifacts(note, campaign);
+                    
+                    if (artifactResult.isSuccessful()) {
+                        System.out.println("Artifact processing completed: " + 
+                                         artifactResult.getArtifacts().size() + " artifacts, " +
+                                         artifactResult.getRelationships().size() + " relationships extracted");
+                    } else {
+                        System.err.println("Artifact processing failed: " + artifactResult.getErrorMessage());
+                        // Note: We don't return false here because the note was successfully stored
+                        // Artifact processing failure is not critical to the main workflow
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error during artifact processing: " + e.getMessage());
+                    // Continue - artifact processing is supplementary to note storage
+                }
+                
                 return true;
             } else {
                 System.err.println("Failed to store note in campaign");

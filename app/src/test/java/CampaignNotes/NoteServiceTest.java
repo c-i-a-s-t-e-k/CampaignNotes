@@ -3,6 +3,7 @@ package CampaignNotes;
 import java.sql.SQLException;
 import java.util.UUID;
 
+import CampaignNotes.tracking.LangfuseClient;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;

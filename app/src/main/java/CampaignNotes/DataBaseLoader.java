@@ -32,6 +32,8 @@ public class DataBaseLoader {
     public DataBaseLoader() {
         try {
             this.dotenv = Dotenv.configure().directory("./").load();
+            this.ensureArtifactTablesExist();
+            this.insertDefaultArtifactCategories();
         } catch (Exception e) {
             System.err.println("Error loading .env file: " + e.getMessage() + " working directory: " + System.getProperty("user.dir"));
         }
@@ -305,6 +307,92 @@ public class DataBaseLoader {
             int affectedRows = pstmt.executeUpdate();
             
             return affectedRows > 0;
+        }
+    }
+    
+    /**
+     * Ensures artifact-related tables exist in SQLite database.
+     * Creates artifact_categories and artifact_categories_to_campaigns tables if they don't exist.
+     */
+    private void ensureArtifactTablesExist() {
+        String createArtifactCategories = """
+            CREATE TABLE IF NOT EXISTS artifact_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                description TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """;
+        
+        String createCampaignCategories = """
+            CREATE TABLE IF NOT EXISTS artifact_categories_to_campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_uuid TEXT NOT NULL,
+                category_name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (campaign_uuid) REFERENCES campains(uuid) ON DELETE CASCADE,
+                FOREIGN KEY (category_name) REFERENCES artifact_categories(name) ON DELETE CASCADE,
+                UNIQUE(campaign_uuid, category_name)
+            )
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH)) {
+            // Enable foreign key constraints
+            try (PreparedStatement enableFk = conn.prepareStatement("PRAGMA foreign_keys = ON")) {
+                enableFk.execute();
+            }
+            
+            // Create artifact_categories table
+            try (PreparedStatement pstmt = conn.prepareStatement(createArtifactCategories)) {
+                pstmt.execute();
+                System.out.println("Artifact categories table ensured");
+            }
+            
+            // Create artifact_categories_to_campaigns table
+            try (PreparedStatement pstmt = conn.prepareStatement(createCampaignCategories)) {
+                pstmt.execute();
+                System.out.println("Campaign-categories mapping table ensured");
+            }
+            
+        } catch (SQLException e) {
+            System.err.println("Error creating artifact tables: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Initializes default artifact categories if they don't exist.
+     * Adds the four default categories: characters, locations, items, events.
+     */
+    private void insertDefaultArtifactCategories() {
+        String insertSql = "INSERT OR IGNORE INTO artifact_categories (name, description) VALUES (?, ?)";
+        
+        String[][] defaultCategories = {
+            {"characters", "People, creatures, and sentient beings within the narrative"},
+            {"locations", "Places, regions, buildings, and geographical features"},
+            {"items", "Objects, weapons, artifacts, and physical possessions"},
+            {"events", "Important occurrences, battles, ceremonies, and plot developments"}
+        };
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+             PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+            
+            int insertedCount = 0;
+            for (String[] category : defaultCategories) {
+                pstmt.setString(1, category[0]);
+                pstmt.setString(2, category[1]);
+                int affected = pstmt.executeUpdate();
+                if (affected > 0) {
+                    insertedCount++;
+                }
+            }
+            
+            if (insertedCount > 0) {
+                System.out.println("Inserted " + insertedCount + " default artifact categories");
+            }
+            
+        } catch (SQLException e) {
+            System.err.println("Error inserting default artifact categories: " + e.getMessage());
         }
     }
 }

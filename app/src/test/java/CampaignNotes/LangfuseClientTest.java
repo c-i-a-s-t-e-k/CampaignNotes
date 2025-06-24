@@ -10,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import CampaignNotes.tracking.LangfuseClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -91,8 +93,6 @@ class LangfuseClientTest {
         assertTrue(result, "Embedding tracking for an override Note object should be successful");
     }
 
-
-
     @Test
     @DisplayName("Should successfully track note processing session and return trace ID")
     @Timeout(30)
@@ -112,7 +112,6 @@ class LangfuseClientTest {
                 () -> assertNotNull(traceId, "Should receive a trace ID"),
                 () -> assertFalse(traceId.trim().isEmpty(), "Trace ID should not be empty")
         );
-
     }
 
     @Test
@@ -240,5 +239,4 @@ class LangfuseClientTest {
         // Sprawdzamy czy funkcja prawidłowo zwraca null dla nieistniejącego trace
         assertNull(result, "Should return null for non-existent trace ID");
     }
-
 }
