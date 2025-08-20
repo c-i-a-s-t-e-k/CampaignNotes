@@ -1,0 +1,11 @@
+Quadrant - http://localhost:6333/dashboard#/collections
+Neo4j - http://localhost:7474/browser/preview/
+
+
+show extracted note
+```cypher
+MATCH (n)
+WHERE n.note_id = "6841ffc6-a3ac-5bd5-bf89-2e7af2f8f442"
+OPTIONAL MATCH (n)-[r]-(m)
+RETURN n, r, m
+```

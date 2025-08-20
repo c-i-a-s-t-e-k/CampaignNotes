@@ -32,6 +32,7 @@ public class DataBaseLoader {
     public DataBaseLoader() {
         try {
             this.dotenv = Dotenv.configure().directory("./").load();
+            this.ensureCampaignsTableExists();
             this.ensureArtifactTablesExist();
             this.insertDefaultArtifactCategories();
         } catch (Exception e) {
@@ -310,6 +311,27 @@ public class DataBaseLoader {
         }
     }
     
+    /**
+     * Ensures the 'campains' table exists in SQLite database.
+     */
+    private void ensureCampaignsTableExists() {
+        String createCampains = """
+            CREATE TABLE IF NOT EXISTS campains (
+                uuid TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                neo4j_label TEXT NOT NULL,
+                quadrant_collection_name TEXT NOT NULL
+            )
+            """;
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+             PreparedStatement pstmt = conn.prepareStatement(createCampains)) {
+            pstmt.execute();
+            System.out.println("Campains table ensured");
+        } catch (SQLException e) {
+            System.err.println("Error creating campains table: " + e.getMessage());
+        }
+    }
+
     /**
      * Ensures artifact-related tables exist in SQLite database.
      * Creates artifact_categories and artifact_categories_to_campaigns tables if they don't exist.

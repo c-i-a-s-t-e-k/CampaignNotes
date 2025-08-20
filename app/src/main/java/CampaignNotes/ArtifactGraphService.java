@@ -159,6 +159,7 @@ public class ArtifactGraphService {
      */
     private List<Artifact> extractArtifacts(String noteContent, Map<String, String> categories, 
                                            Note note, Campain campaign, String traceId) {
+        String modelUsed = "o3-mini";
         List<Artifact> artifacts = new ArrayList<>();
         
         try {
@@ -176,7 +177,7 @@ public class ArtifactGraphService {
             String inputPrompt = createNAEInputPrompt(noteContent);
             
             // Generate with retry
-            LLMResponse response = llmService.generateWithRetry("o1-mini", systemPrompt, inputPrompt, 1);
+            LLMResponse response = llmService.generateWithRetry(modelUsed, systemPrompt, inputPrompt, 1);
             
             // Track in Langfuse
             if (traceId != null && response.isSuccessful()) {
@@ -188,7 +189,7 @@ public class ArtifactGraphService {
             if (response.isSuccessful()) {
 //                System.out.println("\n\nFor DEBUG::" + response.getContent() + "\n\n");
                 artifacts = parseArtifactsFromResponse(response.getContent(), note, campaign);
-                System.out.println("Extracted " + artifacts.size() + " artifacts using o1-mini");
+                System.out.println("Extracted " + artifacts.size() + " artifacts using " + modelUsed);
             } else {
                 System.err.println("Failed to extract artifacts: " + response.getErrorMessage());
             }
@@ -213,6 +214,7 @@ public class ArtifactGraphService {
     private List<Relationship> extractRelationships(String noteContent, List<Artifact> artifacts, 
                                                    Note note, Campain campaign, String traceId) {
         List<Relationship> relationships = new ArrayList<>();
+        String modelUsed = "o3-mini";
         
         try {
             // Get ARE prompt from Langfuse using enhanced method with production label
@@ -230,7 +232,7 @@ public class ArtifactGraphService {
             String inputPrompt = createAREInputPrompt(noteContent, artifacts);
 
             // Generate with retry using o1 (more powerful for relationship detection)
-            LLMResponse response = llmService.generateWithRetry("o1-mini", systemPrompt, inputPrompt, 1);
+            LLMResponse response = llmService.generateWithRetry(modelUsed, systemPrompt, inputPrompt, 1);
             
             // Track in Langfuse
             if (traceId != null && response.isSuccessful()) {
@@ -241,7 +243,7 @@ public class ArtifactGraphService {
             
             if (response.isSuccessful()) {
                 relationships = parseRelationshipsFromResponse(response.getContent(), note, campaign);
-                System.out.println("Extracted " + relationships.size() + " relationships using o1");
+                System.out.println("Extracted " + relationships.size() + " relationships using " + modelUsed);
             } else {
                 System.err.println("Failed to extract relationships: " + response.getErrorMessage());
             }

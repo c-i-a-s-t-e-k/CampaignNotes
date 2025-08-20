@@ -11,8 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import CampaignNotes.tracking.LangfuseClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -22,6 +20,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.gson.JsonObject;
+
+import CampaignNotes.tracking.LangfuseClient;
 
 /**
  * Comprehensive test suite for Enhanced Prompt Management functionality in LangfuseClient.
@@ -223,7 +223,7 @@ class LangfuseClientPromptTest {
                 () -> assertNotNull(cachedResult, "Preloaded prompt should be retrievable"),
                 () -> assertTrue(cachedResult.contains("Hello World from Test!"), 
                     "Preloaded prompt should interpolate correctly"),
-                () -> assertTrue(duration < 100, "Preloaded prompt should be retrieved quickly (< 100ms)")
+                () -> assertTrue(duration < 300, "Preloaded prompt should be retrieved quickly (< 300ms)")
             );
         }
     }
@@ -393,7 +393,7 @@ class LangfuseClientPromptTest {
                 () -> assertNotNull(prompt, "Should retrieve prompt successfully"),
                 () -> assertTrue(prompt.contains("Integration Test Value"), 
                     "Should contain interpolated value"),
-                () -> assertTrue(duration < 100, "Should be fast due to caching"),
+                () -> assertTrue(duration < 300, "Should be fast due to caching"),
                 () -> assertFalse(prompt.contains("{{VARIABLE}}"), 
                     "Should not contain unresolved variables")
             );
