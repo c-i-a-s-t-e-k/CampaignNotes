@@ -67,7 +67,9 @@ public class CampaignManager {
                     uuid.toString(),
                     campaignName,
                     sanitizeNeo4jLabel(campaignName + "CampaignLabel" + uuid.toString()),
-                    campaignName + "CampaignCollection" + uuid.toString()
+                    campaignName + "CampaignCollection" + uuid.toString(),
+                    dbLoader.getDefaultUserId(),
+                    "Campaign created for " + campaignName
             );
 
             dbLoader.saveCampaignToRelativeDB(newCampain);

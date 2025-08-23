@@ -32,9 +32,11 @@ public class DataBaseLoader {
     public DataBaseLoader() {
         try {
             this.dotenv = Dotenv.configure().directory("./").load();
+            this.ensureUsersTableExists();
             this.ensureCampaignsTableExists();
             this.ensureArtifactTablesExist();
             this.insertDefaultArtifactCategories();
+            this.createDefaultUserIfNeeded();
         } catch (Exception e) {
             System.err.println("Error loading .env file: " + e.getMessage() + " working directory: " + System.getProperty("user.dir"));
         }
@@ -200,7 +202,11 @@ public class DataBaseLoader {
      */
     public List<Campain> getAllCampaigns() {
         List<Campain> campaigns = new ArrayList<>();
-        String sql = "SELECT uuid, name, neo4j_label, quadrant_collection_name FROM campains";
+        String sql = """
+            SELECT uuid, name, neo4j_label, quadrant_collection_name, user_id, description, 
+                   created_at, updated_at, is_active, deleted_at, settings 
+            FROM campains WHERE is_active = 1 AND deleted_at IS NULL
+            """;
         
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
              PreparedStatement pstmt = conn.prepareStatement(sql);
@@ -213,6 +219,20 @@ public class DataBaseLoader {
                     rs.getString("neo4j_label"),
                     rs.getString("quadrant_collection_name")
                 );
+                
+                // Set new fields
+                campaign.setUserId(rs.getString("user_id"));
+                campaign.setDescription(rs.getString("description"));
+                campaign.setCreatedAt(rs.getLong("created_at"));
+                campaign.setUpdatedAt(rs.getLong("updated_at"));
+                campaign.setActive(rs.getBoolean("is_active"));
+                
+                Long deletedAt = rs.getLong("deleted_at");
+                if (!rs.wasNull()) {
+                    campaign.setDeletedAt(deletedAt);
+                }
+                
+                campaign.setSettings(rs.getString("settings"));
                 campaigns.add(campaign);
             }
             
@@ -229,7 +249,11 @@ public class DataBaseLoader {
      * @return Campain object or null if not found
      */
     public Campain getCampaignById(String uuid) {
-        String sql = "SELECT uuid, name, neo4j_label, quadrant_collection_name FROM campains WHERE uuid = ?";
+        String sql = """
+            SELECT uuid, name, neo4j_label, quadrant_collection_name, user_id, description, 
+                   created_at, updated_at, is_active, deleted_at, settings 
+            FROM campains WHERE uuid = ? AND is_active = 1 AND deleted_at IS NULL
+            """;
         
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -238,12 +262,27 @@ public class DataBaseLoader {
             
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
-                    return new Campain(
+                    Campain campaign = new Campain(
                         rs.getString("uuid"),
                         rs.getString("name"),
                         rs.getString("neo4j_label"),
                         rs.getString("quadrant_collection_name")
                     );
+                    
+                    // Set new fields
+                    campaign.setUserId(rs.getString("user_id"));
+                    campaign.setDescription(rs.getString("description"));
+                    campaign.setCreatedAt(rs.getLong("created_at"));
+                    campaign.setUpdatedAt(rs.getLong("updated_at"));
+                    campaign.setActive(rs.getBoolean("is_active"));
+                    
+                    Long deletedAt = rs.getLong("deleted_at");
+                    if (!rs.wasNull()) {
+                        campaign.setDeletedAt(deletedAt);
+                    }
+                    
+                    campaign.setSettings(rs.getString("settings"));
+                    return campaign;
                 }
             }
             
@@ -263,7 +302,11 @@ public class DataBaseLoader {
     public boolean saveCampaignToRelativeDB(Campain campaign) throws SQLException {
         // First check if a campaign with this UUID already exists
         String checkSql = "SELECT uuid FROM campains WHERE uuid = ?";
-        String insertSql = "INSERT INTO campains (uuid, name, neo4j_label, quadrant_collection_name) VALUES (?, ?, ?, ?)";
+        String insertSql = """
+            INSERT INTO campains (uuid, name, neo4j_label, quadrant_collection_name, 
+                                 user_id, description, created_at, updated_at, is_active) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """;
         
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH)) {
             // Check for existing UUID
@@ -276,12 +319,30 @@ public class DataBaseLoader {
                 }
             }
             
+            // Ensure required fields are set
+            if (campaign.getUserId() == null || campaign.getUserId().isEmpty()) {
+                campaign.setUserId(getDefaultUserId());
+            }
+            
+            long currentTime = System.currentTimeMillis() / 1000L;
+            if (campaign.getCreatedAt() == 0) {
+                campaign.setCreatedAt(currentTime);
+            }
+            if (campaign.getUpdatedAt() == 0) {
+                campaign.setUpdatedAt(currentTime);
+            }
+            
             // Insert the new campaign
             try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                 pstmt.setString(1, campaign.getUuid());
                 pstmt.setString(2, campaign.getName());
                 pstmt.setString(3, campaign.getNeo4jLabel());
                 pstmt.setString(4, campaign.getQuadrantCollectionName());
+                pstmt.setString(5, campaign.getUserId());
+                pstmt.setString(6, campaign.getDescription());
+                pstmt.setLong(7, campaign.getCreatedAt());
+                pstmt.setLong(8, campaign.getUpdatedAt());
+                pstmt.setBoolean(9, campaign.isActive());
                 
                 int affectedRows = pstmt.executeUpdate();
                 return affectedRows > 0;
@@ -293,21 +354,57 @@ public class DataBaseLoader {
     }
     
     /**
-     * Deletes a campaign from the SQLite database.
+     * Deletes a campaign from the SQLite database using soft delete.
      * @param uuid The UUID of the campaign to delete
      * @return true if the campaign was successfully deleted, false otherwise
      * @throws SQLException if there is an error executing the SQL query
      */
     public boolean deleteCampaignFromRelativeDB(String uuid) throws SQLException {
-        String sql = "DELETE FROM campains WHERE uuid = ?";
+        String sql = """
+            UPDATE campains 
+            SET is_active = 0, deleted_at = ?, updated_at = ? 
+            WHERE uuid = ? AND is_active = 1
+            """;
         
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
-            pstmt.setString(1, uuid);
-            int affectedRows = pstmt.executeUpdate();
+            long currentTime = System.currentTimeMillis() / 1000L;
+            pstmt.setLong(1, currentTime);
+            pstmt.setLong(2, currentTime);
+            pstmt.setString(3, uuid);
             
+            int affectedRows = pstmt.executeUpdate();
             return affectedRows > 0;
+        }
+    }
+    
+    /**
+     * Ensures the 'users' table exists in SQLite database.
+     */
+    private void ensureUsersTableExists() {
+        String createUsers = """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                deleted_at INTEGER DEFAULT NULL,
+                email_verified BOOLEAN DEFAULT 0,
+                email_verification_token TEXT,
+                email_verification_expires_at INTEGER,
+                last_login_at INTEGER,
+                is_admin BOOLEAN DEFAULT 0
+            )
+            """;
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+             PreparedStatement pstmt = conn.prepareStatement(createUsers)) {
+            pstmt.execute();
+            System.out.println("Users table ensured");
+        } catch (SQLException e) {
+            System.err.println("Error creating users table: " + e.getMessage());
         }
     }
     
@@ -320,7 +417,15 @@ public class DataBaseLoader {
                 uuid TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 neo4j_label TEXT NOT NULL,
-                quadrant_collection_name TEXT NOT NULL
+                quadrant_collection_name TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                description TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                deleted_at INTEGER DEFAULT NULL,
+                settings TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
             """;
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
@@ -416,5 +521,66 @@ public class DataBaseLoader {
         } catch (SQLException e) {
             System.err.println("Error inserting default artifact categories: " + e.getMessage());
         }
+    }
+    
+    /**
+     * Creates a default user if no users exist in the database.
+     * This is needed for migration from old schema and testing purposes.
+     */
+    private void createDefaultUserIfNeeded() {
+        String checkUsersSql = "SELECT COUNT(*) FROM users";
+        String insertDefaultUserSql = """
+            INSERT INTO users (id, email, password_hash, created_at, updated_at, is_admin) 
+            VALUES (?, ?, ?, ?, ?, ?)
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH)) {
+            // Check if any users exist
+            try (PreparedStatement checkStmt = conn.prepareStatement(checkUsersSql);
+                 ResultSet rs = checkStmt.executeQuery()) {
+                
+                if (rs.next() && rs.getInt(1) == 0) {
+                    // No users exist, create default user
+                    long currentTime = System.currentTimeMillis() / 1000L;
+                    
+                    try (PreparedStatement insertStmt = conn.prepareStatement(insertDefaultUserSql)) {
+                        insertStmt.setString(1, "default-user");
+                        insertStmt.setString(2, "admin@localhost");
+                        insertStmt.setString(3, "dummy-hash-for-migration");
+                        insertStmt.setLong(4, currentTime);
+                        insertStmt.setLong(5, currentTime);
+                        insertStmt.setBoolean(6, true);
+                        
+                        int affected = insertStmt.executeUpdate();
+                        if (affected > 0) {
+                            System.out.println("Created default user for migration purposes");
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error creating default user: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Gets the default user ID for migration purposes.
+     * @return the default user ID or null if not found
+     */
+    public String getDefaultUserId() {
+        String sql = "SELECT id FROM users WHERE email = 'admin@localhost'";
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            
+            if (rs.next()) {
+                return rs.getString("id");
+            }
+        } catch (SQLException e) {
+            System.err.println("Error getting default user ID: " + e.getMessage());
+        }
+        
+        return "default-user"; // Fallback to known default
     }
 }

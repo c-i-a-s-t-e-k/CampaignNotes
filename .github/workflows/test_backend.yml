@@ -4,11 +4,13 @@ on:
   push:
     branches: [ master ]
   pull_request:
+    types: [labeled]
     branches: [ master ]
   workflow_dispatch:
 
 jobs:
   test:
+    if: ${{github.event.label.name == 'backend'}}
     runs-on: ubuntu-latest
 
     services:
@@ -58,9 +60,11 @@ jobs:
 
     - name: Create SQLite database
       run: |
-        echo "Creating SQLite database with schema..."
-        sqlite3 /home/runner/work/CampaignNotes/CampaignNotes/app/sqlite.db "CREATE TABLE IF NOT EXISTS campains (uuid TEXT PRIMARY KEY, name TEXT, neo4j_label TEXT, quadrant_collection_name TEXT);"
-        echo "SQLite database created successfully!"
+        echo "Creating SQLite database with full schema..."
+        sqlite3 /home/runner/work/CampaignNotes/CampaignNotes/app/sqlite.db < .github/scripts/create_test_database.sql
+        echo "SQLite database created successfully with complete schema!"
+        echo "Verifying database structure..."
+        sqlite3 /home/runner/work/CampaignNotes/CampaignNotes/app/sqlite.db ".tables"
 
     - name: Create .env file for tests
       run: |
