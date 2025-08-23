@@ -48,6 +48,7 @@ target/
 #qdrant neo4j and sqlitedb
 qdrant_storage/
 sqlite.db
+sqlite.db.*
 
 #my lesset scripts
 start_dbs.sh
