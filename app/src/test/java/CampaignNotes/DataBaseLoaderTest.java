@@ -107,15 +107,16 @@ class DataBaseLoaderTest {
             assertTrue(dataBaseLoader.deleteCampaignFromRelativeDB(testUuid), 
                 "Campaign should be deleted successfully");
 
-            // Verify campaign doesn't exist in SQLite
+            // Verify campaign is soft deleted in SQLite
             try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + TEST_DB_PATH);
-                 PreparedStatement pstmt = conn.prepareStatement("SELECT * FROM campains WHERE uuid = ?")) {
+                 PreparedStatement pstmt = conn.prepareStatement("SELECT is_active, deleted_at FROM campains WHERE uuid = ?")) {
 
                 pstmt.setString(1, testUuid);
                 ResultSet rs = pstmt.executeQuery();
 
-                assertFalse(rs.next(), 
-                    "Campaign should not exist in SQLite database after deletion");
+                assertTrue(rs.next(), "Campaign should still exist in database after soft deletion");
+                assertFalse(rs.getBoolean("is_active"), "Campaign should be marked as inactive");
+                assertTrue(rs.getLong("deleted_at") > 0, "Campaign should have deleted_at timestamp");
             }
 
             // Verify Qdrant collection is removed
