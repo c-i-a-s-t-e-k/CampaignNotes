@@ -3,10 +3,13 @@
  */
 package CampaignNotes;
 
-import CampaignNotes.tracking.LangfuseClient;
-
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+
+import CampaignNotes.tracking.LangfuseClient;
+import model.PromptContent;
 
 public class App {
     public String getGreeting() {
@@ -47,11 +50,18 @@ public class App {
         } catch (Exception e) {
             System.out.println("Langfuse connection failed: " + e.getMessage());
         }
-        
-        // Start Terminal Interface
-        System.out.println("\nStarting Terminal Interface...");
-        TerminalInterface terminalInterface = new TerminalInterface();
-        terminalInterface.start();
+        LangfuseClient langfuseClient = new LangfuseClient();
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("CATEGORIES", "product, service, campaign");
+        variables.put("TEXT", "some random text");
+
+
+        PromptContent promptContent = langfuseClient.getPromptContentWithVariables("ArtefactRetactionPromptForTesting", variables);
+        System.out.println("Chat Prompt with variables: " + (promptContent != null ? promptContent.asText() : "null"));    
+        // // Start Terminal Interface
+        // System.out.println("\nStarting Terminal Interface...");
+        // TerminalInterface terminalInterface = new TerminalInterface();
+        // terminalInterface.start();
 
 
         
