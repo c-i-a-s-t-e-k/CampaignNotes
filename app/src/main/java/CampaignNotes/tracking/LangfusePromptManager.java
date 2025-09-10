@@ -3,10 +3,17 @@ package CampaignNotes.tracking;
 import java.net.URLEncoder;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+
+import model.ChatMessage;
+import model.PromptContent;
 
 /**
  * Manager for Langfuse prompt operations.
@@ -44,15 +51,15 @@ public class LangfusePromptManager {
     private static final long EXTENDED_CACHE_TTL_MS = 300_000; // 5 minutes for production scenarios
     
     /**
-     * Cached prompt wrapper with TTL support
+     * Cached prompt wrapper with TTL support and preprocessing
      */
     private static class CachedPrompt {
-        private final JsonObject promptData;
+        private final PromptContent promptContent;
         private final long timestamp;
         private final long ttlMs;
         
-        public CachedPrompt(JsonObject promptData, long ttlMs) {
-            this.promptData = promptData;
+        public CachedPrompt(JsonObject rawData, long ttlMs) {
+            this.promptContent = preprocessPromptData(rawData);
             this.timestamp = System.currentTimeMillis();
             this.ttlMs = ttlMs;
         }
@@ -61,9 +68,10 @@ public class LangfusePromptManager {
             return System.currentTimeMillis() - timestamp > ttlMs;
         }
         
-        public JsonObject getPromptData() {
-            return promptData;
+        public PromptContent getPromptContent() {
+            return promptContent;
         }
+        
     }
     
     /**
@@ -89,6 +97,7 @@ public class LangfusePromptManager {
     
     /**
      * Retrieves a prompt from Langfuse with variables interpolated and advanced options.
+     * Legacy method maintained for backward compatibility.
      * 
      * @param promptName the name of the prompt to retrieve
      * @param variables map of variables to interpolate in the prompt
@@ -98,54 +107,12 @@ public class LangfusePromptManager {
      * @param maxRetries maximum retry attempts on failure
      * @return the prompt content with variables interpolated, or null if not found
      */
+    @Deprecated
     public String getPromptWithVariables(String promptName, java.util.Map<String, Object> variables, 
                                         Integer version, String label, long cacheTtlMs, int maxRetries) {
-        if (promptName == null || promptName.trim().isEmpty()) {
-            throw new IllegalArgumentException("promptName cannot be null or empty");
-        }
-        
-        // Create cache key including version/label parameters
-        String cacheKey = buildCacheKey(promptName, version, label);
-        
-        try {
-            // Check cache first (if caching is enabled)
-            JsonObject promptData = getCachedPrompt(cacheKey, cacheTtlMs);
-            
-            if (promptData == null) {
-                // Fetch from API with retry mechanism
-                promptData = fetchPromptFromAPI(promptName, version, label, maxRetries);
-                
-                if (promptData != null && cacheTtlMs > 0) {
-                    // Cache the result
-                    promptCache.put(cacheKey, new CachedPrompt(promptData, cacheTtlMs));
-                }
-            }
-            
-            if (promptData == null) {
-                System.err.println("Failed to retrieve prompt: " + promptName);
-                return null;
-            }
-            
-            // Extract prompt content based on type
-            String promptContent = extractPromptContent(promptData);
-            if (promptContent == null) {
-                System.err.println("Invalid prompt structure for: " + promptName);
-                return null;
-            }
-            
-            // Interpolate variables
-            String interpolatedPrompt = interpolateVariables(promptContent, variables);
-            
-            System.out.println("Successfully retrieved and processed prompt: " + promptName + 
-                              (version != null ? " (version " + version + ")" : "") +
-                              (label != null ? " (label " + label + ")" : ""));
-            
-            return interpolatedPrompt;
-            
-        } catch (Exception e) {
-            System.err.println("Error retrieving prompt from Langfuse: " + e.getMessage());
-            return null;
-        }
+        // Use new infrastructure but return string for backward compatibility
+        PromptContent content = getPromptContentWithVariables(promptName, variables, version, label, cacheTtlMs, maxRetries);
+        return content != null ? content.asText() : null;
     }
     
     /**
@@ -220,9 +187,9 @@ public class LangfusePromptManager {
         String cacheKey = buildCacheKey(promptName, version, label);
         
         // Check cache first
-        JsonObject cachedData = getCachedPrompt(cacheKey, DEFAULT_CACHE_TTL_MS);
-        if (cachedData != null) {
-            return cachedData;
+        PromptContent cachedContent = getCachedPromptContent(cacheKey, DEFAULT_CACHE_TTL_MS);
+        if (cachedContent != null) {
+            return cachedContent.getRawData();
         }
         
         // Fetch from API
@@ -230,9 +197,10 @@ public class LangfusePromptManager {
         
         if (promptData != null) {
             promptCache.put(cacheKey, new CachedPrompt(promptData, DEFAULT_CACHE_TTL_MS));
+            return promptData;
         }
         
-        return promptData;
+        return null;
     }
     
     /**
@@ -331,7 +299,180 @@ public class LangfusePromptManager {
                ", TTL: " + (DEFAULT_CACHE_TTL_MS / 1000) + "s";
     }
     
+    // New Enhanced API Methods
+    
+    /**
+     * Retrieves a prompt as PromptContent with variables interpolated.
+     * This is the new type-safe method that preserves prompt structure.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @return PromptContent object with interpolated variables, or null if not found
+     */
+    public PromptContent getPromptContentWithVariables(String promptName, java.util.Map<String, Object> variables) {
+        return getPromptContentWithVariables(promptName, variables, null, null, DEFAULT_CACHE_TTL_MS, DEFAULT_MAX_RETRIES);
+    }
+    
+    /**
+     * Retrieves a prompt as PromptContent with variables interpolated and advanced options.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @param version specific version number (optional, if null uses production label)
+     * @param label specific label (optional, defaults to "production" if null)
+     * @param cacheTtlMs cache TTL in milliseconds (use 0 to disable caching)
+     * @param maxRetries maximum retry attempts on failure
+     * @return PromptContent object with interpolated variables, or null if not found
+     */
+    public PromptContent getPromptContentWithVariables(String promptName, java.util.Map<String, Object> variables, 
+                                                      Integer version, String label, long cacheTtlMs, int maxRetries) {
+        if (promptName == null || promptName.trim().isEmpty()) {
+            throw new IllegalArgumentException("promptName cannot be null or empty");
+        }
+        
+        // Create cache key including version/label parameters
+        String cacheKey = buildCacheKey(promptName, version, label);
+        
+        try {
+            // Check cache first (if caching is enabled)
+            PromptContent promptContent = getCachedPromptContent(cacheKey, cacheTtlMs);
+            
+            if (promptContent == null) {
+                // Fetch from API with retry mechanism
+                JsonObject promptData = fetchPromptFromAPI(promptName, version, label, maxRetries);
+                
+                if (promptData != null && cacheTtlMs > 0) {
+                    // Cache the result (preprocessing happens in CachedPrompt constructor)
+                    promptCache.put(cacheKey, new CachedPrompt(promptData, cacheTtlMs));
+                    // Get the preprocessed content
+                    promptContent = promptCache.get(cacheKey).getPromptContent();
+                } else if (promptData != null) {
+                    // No caching, preprocess directly
+                    promptContent = preprocessPromptData(promptData);
+                }
+            }
+            
+            if (promptContent == null) {
+                System.err.println("Failed to retrieve prompt: " + promptName);
+                return null;
+            }
+            
+            // Interpolate variables
+            PromptContent interpolatedContent = interpolateVariablesInContent(promptContent, variables);
+            
+            System.out.println("Successfully retrieved and processed prompt: " + promptName + 
+                              (version != null ? " (version " + version + ")" : "") +
+                              (label != null ? " (label " + label + ")" : "") +
+                              " [Type: " + interpolatedContent.getType() + "]");
+            
+            return interpolatedContent;
+            
+        } catch (Exception e) {
+            System.err.println("Error retrieving prompt from Langfuse: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Retrieves a prompt specifically as chat messages with variables interpolated.
+     * Only works with chat-type prompts.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @return list of ChatMessage objects with interpolated variables, or null if not found or not a chat prompt
+     */
+    public List<ChatMessage> getChatPromptWithVariables(String promptName, java.util.Map<String, Object> variables) {
+        PromptContent content = getPromptContentWithVariables(promptName, variables);
+        if (content != null && content.isChat()) {
+            return content.asChatMessages();
+        }
+        if (content != null && !content.isChat()) {
+            System.err.println("Prompt '" + promptName + "' is not a chat prompt (type: " + content.getType() + ")");
+        }
+        return null;
+    }
+    
+    /**
+     * Retrieves a prompt specifically as text with variables interpolated.
+     * Works with both text and chat prompts (chat prompts are converted to formatted text).
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @return text content with interpolated variables, or null if not found
+     */
+    public String getTextPromptWithVariables(String promptName, java.util.Map<String, Object> variables) {
+        PromptContent content = getPromptContentWithVariables(promptName, variables);
+        return content != null ? content.asText() : null;
+    }
+    
+    /**
+     * Checks if a prompt is of chat type.
+     * 
+     * @param promptName the name of the prompt to check
+     * @return true if prompt exists and is of chat type, false otherwise
+     */
+    public boolean isPromptChatType(String promptName) {
+        return getPromptType(promptName) == PromptContent.PromptType.CHAT;
+    }
+    
+    /**
+     * Gets the type of a prompt without loading its content.
+     * 
+     * @param promptName the name of the prompt to check
+     * @return the PromptType, or null if prompt doesn't exist
+     */
+    public PromptContent.PromptType getPromptType(String promptName) {
+        try {
+            JsonObject promptData = fetchPromptFromAPI(promptName, null, "production", 1);
+            if (promptData != null) {
+                String type = promptData.has("type") ? promptData.get("type").getAsString() : "text";
+                return "chat".equals(type) ? PromptContent.PromptType.CHAT : PromptContent.PromptType.TEXT;
+            }
+        } catch (Exception e) {
+            System.err.println("Error checking prompt type: " + e.getMessage());
+        }
+        return null;
+    }
+    
     // Private helper methods
+    
+    /**
+     * Preprocesses prompt data from API response into structured PromptContent.
+     * Handles both text and chat prompt types.
+     * 
+     * @param promptData the raw JSON data from Langfuse API
+     * @return preprocessed PromptContent object
+     */
+    private static PromptContent preprocessPromptData(JsonObject promptData) {
+        String type = promptData.has("type") ? 
+            promptData.get("type").getAsString() : "text";
+        
+        if ("chat".equals(type)) {
+            List<ChatMessage> messages = parseChatMessages(
+                promptData.getAsJsonArray("prompt"));
+            return new PromptContent(PromptContent.PromptType.CHAT, messages, promptData);
+        } else {
+            String textContent = promptData.get("prompt").getAsString();
+            return new PromptContent(PromptContent.PromptType.TEXT, textContent, promptData);
+        }
+    }
+    
+    /**
+     * Parses chat messages from JSON array into ChatMessage objects.
+     * 
+     * @param messagesArray JSON array containing chat messages
+     * @return list of ChatMessage objects
+     */
+    private static List<ChatMessage> parseChatMessages(JsonArray messagesArray) {
+        List<ChatMessage> messages = new ArrayList<>();
+        for (JsonElement element : messagesArray) {
+            JsonObject messageObj = element.getAsJsonObject();
+            String role = messageObj.get("role").getAsString();
+            String content = messageObj.get("content").getAsString();
+            messages.add(new ChatMessage(role, content));
+        }
+        return messages;
+    }
     
     /**
      * Builds cache key from prompt name and optional parameters.
@@ -351,7 +492,7 @@ public class LangfusePromptManager {
     /**
      * Retrieves cached prompt if available and not expired.
      */
-    private JsonObject getCachedPrompt(String cacheKey, long cacheTtlMs) {
+    private PromptContent getCachedPromptContent(String cacheKey, long cacheTtlMs) {
         if (cacheTtlMs <= 0) {
             return null; // Caching disabled
         }
@@ -360,7 +501,7 @@ public class LangfusePromptManager {
         if (cached != null) {
             if (!cached.isExpired()) {
                 System.out.println("Using cached prompt: " + cacheKey);
-                return cached.getPromptData();
+                return cached.getPromptContent();
             } else {
                 // Remove expired entry
                 promptCache.remove(cacheKey);
@@ -368,6 +509,7 @@ public class LangfusePromptManager {
         }
         return null;
     }
+    
     
     /**
      * Fetches prompt from Langfuse API with retry mechanism.
@@ -396,6 +538,7 @@ public class LangfusePromptManager {
             
             // Use retry mechanism from HTTP client
             HttpResponse<String> response = httpClient.getWithRetry(promptEndpoint, maxRetries);
+            System.out.println("Response: " + response.body());
             
             if (httpClient.isSuccessful(response)) {
                 return httpClient.parseJsonResponse(response);
@@ -414,44 +557,34 @@ public class LangfusePromptManager {
         }
     }
     
+    
     /**
-     * Extracts prompt content from API response, supporting both text and chat prompts.
+     * Interpolates variables in PromptContent, handling both text and chat types.
+     * 
+     * @param content the PromptContent to interpolate
+     * @param variables map of variables to interpolate
+     * @return new PromptContent with interpolated variables
      */
-    private String extractPromptContent(JsonObject promptData) {
-        try {
-            // Check prompt type and extract content accordingly
-            String promptType = promptData.has("type") ? promptData.get("type").getAsString() : "text";
+    private PromptContent interpolateVariablesInContent(PromptContent content, java.util.Map<String, Object> variables) {
+        if (variables == null || variables.isEmpty()) {
+            return content;
+        }
+        
+        if (content.isChat()) {
+            List<ChatMessage> interpolatedMessages = content.asChatMessages()
+                .stream()
+                .map(msg -> new ChatMessage(
+                    msg.getRole(),
+                    interpolateVariables(msg.getContent(), variables)
+                ))
+                .collect(Collectors.toList());
             
-            if ("chat".equals(promptType)) {
-                // For chat prompts, convert array of messages to a formatted string
-                if (promptData.has("prompt") && promptData.get("prompt").isJsonArray()) {
-                    JsonArray messages = promptData.getAsJsonArray("prompt");
-                    StringBuilder chatContent = new StringBuilder();
-                    
-                    for (int i = 0; i < messages.size(); i++) {
-                        JsonObject message = messages.get(i).getAsJsonObject();
-                        String role = message.get("role").getAsString();
-                        String content = message.get("content").getAsString();
-                        
-                        if (i > 0) chatContent.append("\n");
-                        chatContent.append("[").append(role.toUpperCase()).append("]: ").append(content);
-                    }
-                    
-                    return chatContent.toString();
-                }
-            } else {
-                // For text prompts, extract the prompt string directly
-                if (promptData.has("prompt")) {
-                    return promptData.get("prompt").getAsString();
-                }
-            }
-            
-            System.err.println("Invalid prompt structure: missing 'prompt' field or unsupported type");
-            return null;
-            
-        } catch (Exception e) {
-            System.err.println("Error extracting prompt content: " + e.getMessage());
-            return null;
+            return new PromptContent(PromptContent.PromptType.CHAT, interpolatedMessages, 
+                                   content.getRawData());
+        } else {
+            String interpolatedText = interpolateVariables(content.asText(), variables);
+            return new PromptContent(PromptContent.PromptType.TEXT, interpolatedText, 
+                                   content.getRawData());
         }
     }
     

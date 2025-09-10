@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 
 import model.ModelPricing;
 import model.Note;
+import model.PromptContent;
 
 /**
  * Facade client for Langfuse API integration.
@@ -241,14 +242,95 @@ public class LangfuseClient {
     
     // === PROMPT MANAGER DELEGATION ===
     
+    // === NEW API METHODS (PromptContent) ===
+    
     /**
-     * Retrieves a prompt from Langfuse with variables interpolated.
+     * Retrieves a prompt from Langfuse with variables interpolated as PromptContent.
      * Delegates to LangfusePromptManager.
      * 
      * @param promptName the name of the prompt to retrieve
      * @param variables map of variables to interpolate in the prompt
+     * @return PromptContent object with type-safe prompt data, or null if not found
+     */
+    public PromptContent getPromptContentWithVariables(String promptName, java.util.Map<String, Object> variables) {
+        return promptManager.getPromptContentWithVariables(promptName, variables);
+    }
+    
+    /**
+     * Retrieves a prompt without caching as PromptContent (always fresh from API).
+     * Delegates to LangfusePromptManager.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @return PromptContent object with type-safe prompt data, or null if not found
+     */
+    public PromptContent getPromptContentWithVariiblesNoCache(String promptName, java.util.Map<String, Object> variables) {
+        return promptManager.getPromptContentWithVariables(promptName, variables, null, null, 0, 3); // 0 cache, 3 retries default
+    }
+    
+    /**
+     * Retrieves the latest version of a prompt as PromptContent (using 'latest' label).
+     * Delegates to LangfusePromptManager.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @return PromptContent object with type-safe prompt data, or null if not found
+     */
+    public PromptContent getLatestPromptContentWithVariables(String promptName, java.util.Map<String, Object> variables) {
+        return promptManager.getPromptContentWithVariables(promptName, variables, null, "latest", 60_000, 3); // 60s cache, 3 retries default
+    }
+    
+    /**
+     * Retrieves a specific version of a prompt as PromptContent.
+     * Delegates to LangfusePromptManager.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param version the specific version number to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @return PromptContent object with type-safe prompt data, or null if not found
+     */
+    public PromptContent getPromptContentVersionWithVariables(String promptName, int version, java.util.Map<String, Object> variables) {
+        return promptManager.getPromptContentWithVariables(promptName, variables, version, null, 60_000, 3); // 60s cache, 3 retries default
+    }
+    
+    /**
+     * Retrieves a prompt with a specific label as PromptContent (e.g., "staging", "production").
+     * Delegates to LangfusePromptManager.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param label the specific label to use
+     * @param variables map of variables to interpolate in the prompt
+     * @return PromptContent object with type-safe prompt data, or null if not found
+     */
+    public PromptContent getPromptContentWithLabel(String promptName, String label, java.util.Map<String, Object> variables) {
+        return promptManager.getPromptContentWithVariables(promptName, variables, null, label, 60_000, 3); // 60s cache, 3 retries default
+    }
+    
+    /**
+     * Retrieves a prompt with extended cache TTL as PromptContent for production scenarios.
+     * Delegates to LangfusePromptManager.
+     * 
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
+     * @return PromptContent object with type-safe prompt data, or null if not found
+     */
+    public PromptContent getPromptContentWithVariablesExtendedCache(String promptName, java.util.Map<String, Object> variables) {
+        long extendedCacheTtlMs = 60_000 * 6; // 6x longer cache for production (6 minutes)
+        return promptManager.getPromptContentWithVariables(promptName, variables, null, null, extendedCacheTtlMs, 3);
+    }
+    
+    // === DEPRECATED API METHODS (String) ===
+    
+    /**
+     * Retrieves a prompt from Langfuse with variables interpolated.
+     * Delegates to LangfusePromptManager.
+     * 
+     * @deprecated Use {@link #getPromptContentWithVariables(String, java.util.Map)} instead for type-safe prompt handling
+     * @param promptName the name of the prompt to retrieve
+     * @param variables map of variables to interpolate in the prompt
      * @return the prompt content with variables interpolated, or null if not found
      */
+    @Deprecated
     public String getPromptWithVariables(String promptName, java.util.Map<String, Object> variables) {
         return promptManager.getPromptWithVariables(promptName, variables);
     }
@@ -257,10 +339,12 @@ public class LangfuseClient {
      * Retrieves a prompt without caching (always fresh from API).
      * Delegates to LangfusePromptManager.
      * 
+     * @deprecated Use {@link #getPromptContentWithVariablesNoCache(String, java.util.Map)} instead for type-safe prompt handling
      * @param promptName the name of the prompt to retrieve
      * @param variables map of variables to interpolate in the prompt
      * @return the prompt content with variables interpolated, or null if not found
      */
+    @Deprecated
     public String getPromptWithVariablesNoCache(String promptName, java.util.Map<String, Object> variables) {
         return promptManager.getPromptWithVariablesNoCache(promptName, variables);
     }
@@ -269,10 +353,12 @@ public class LangfuseClient {
      * Retrieves the latest version of a prompt (using 'latest' label).
      * Delegates to LangfusePromptManager.
      * 
+     * @deprecated Use {@link #getLatestPromptContentWithVariables(String, java.util.Map)} instead for type-safe prompt handling
      * @param promptName the name of the prompt to retrieve
      * @param variables map of variables to interpolate in the prompt
      * @return the prompt content with variables interpolated, or null if not found
      */
+    @Deprecated
     public String getLatestPromptWithVariables(String promptName, java.util.Map<String, Object> variables) {
         return promptManager.getLatestPromptWithVariables(promptName, variables);
     }
@@ -281,11 +367,13 @@ public class LangfuseClient {
      * Retrieves a specific version of a prompt.
      * Delegates to LangfusePromptManager.
      * 
+     * @deprecated Use {@link #getPromptContentVersionWithVariables(String, int, java.util.Map)} instead for type-safe prompt handling
      * @param promptName the name of the prompt to retrieve
      * @param version the specific version number to retrieve
      * @param variables map of variables to interpolate in the prompt
      * @return the prompt content with variables interpolated, or null if not found
      */
+    @Deprecated
     public String getPromptVersionWithVariables(String promptName, int version, java.util.Map<String, Object> variables) {
         return promptManager.getPromptVersionWithVariables(promptName, version, variables);
     }
@@ -294,11 +382,13 @@ public class LangfuseClient {
      * Retrieves a prompt with a specific label (e.g., "staging", "production").
      * Delegates to LangfusePromptManager.
      * 
+     * @deprecated Use {@link #getPromptContentWithLabel(String, String, java.util.Map)} instead for type-safe prompt handling
      * @param promptName the name of the prompt to retrieve
      * @param label the specific label to use
      * @param variables map of variables to interpolate in the prompt
      * @return the prompt content with variables interpolated, or null if not found
      */
+    @Deprecated
     public String getPromptWithLabel(String promptName, String label, java.util.Map<String, Object> variables) {
         return promptManager.getPromptWithLabel(promptName, label, variables);
     }
@@ -307,10 +397,12 @@ public class LangfuseClient {
      * Retrieves a prompt with extended cache TTL for production scenarios.
      * Delegates to LangfusePromptManager.
      * 
+     * @deprecated Use {@link #getPromptContentWithVariablesExtendedCache(String, java.util.Map)} instead for type-safe prompt handling
      * @param promptName the name of the prompt to retrieve
      * @param variables map of variables to interpolate in the prompt
      * @return the prompt content with variables interpolated, or null if not found
      */
+    @Deprecated
     public String getPromptWithVariablesExtendedCache(String promptName, java.util.Map<String, Object> variables) {
         return promptManager.getPromptWithVariablesExtendedCache(promptName, variables);
     }

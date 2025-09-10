@@ -18,6 +18,7 @@ import model.ArtifactProcessingResult;
 import model.Campain;
 import model.LLMResponse;
 import model.Note;
+import model.PromptContent;
 import model.Relationship;
 
 /**
@@ -34,6 +35,10 @@ public class ArtifactGraphService {
     
     // Timeout for the entire workflow (1 minute as per PRD)
     private static final long WORKFLOW_TIMEOUT_MS = 60000;
+    
+    // LLM models used for different stages of artifact processing
+    private static final String ARTIFACT_EXTRACTION_MODEL = "o3-mini";
+    private static final String RELATIONSHIP_EXTRACTION_MODEL = "o3-mini";
     
     /**
      * Constructor with default dependencies
@@ -159,22 +164,31 @@ public class ArtifactGraphService {
      */
     private List<Artifact> extractArtifacts(String noteContent, Map<String, String> categories, 
                                            Note note, Campain campaign, String traceId) {
-        String modelUsed = "o3-mini";
+        String modelUsed = ARTIFACT_EXTRACTION_MODEL;
         List<Artifact> artifacts = new ArrayList<>();
         
         try {
             // Get NAE prompt from Langfuse
             Map<String, Object> promptVariables = new HashMap<>();
             promptVariables.put("CATEGORIES", formatCategoriesForPrompt(categories));
+            promptVariables.put("TEXT", createNAEInputPrompt(noteContent));
             
-            String systemPrompt = langfuseClient.getPromptWithVariables("NarrativeArtefactExtractor", promptVariables);
-            if (systemPrompt == null) {
-                // Fallback prompt
-                systemPrompt = createFallbackNAEPrompt(categories);
+            PromptContent promptContent = langfuseClient.getPromptContentWithVariables("NarrativeArtefactExtractorV2", promptVariables);
+            String systemPrompt;
+            String inputPrompt;
+            if (promptContent != null) {
+                if (promptContent.isText()) {
+                    systemPrompt = promptContent.asText();
+                    inputPrompt = createNAEInputPrompt(noteContent);
+                } else if (promptContent.isChat()) {
+                    systemPrompt = promptContent.asChatMessages().get(0).getContent();
+                    inputPrompt = promptContent.asChatMessages().get(1).getContent();
+                } else {
+                    throw new RuntimeException("Unsupported prompt type: " + promptContent.getType());
+                }
+            }else {
+                throw new RuntimeException("Failed to get NAE prompt from Langfuse");
             }
-
-            // Create JSON input prompt with only 'note' field as required by NAE prompt
-            String inputPrompt = createNAEInputPrompt(noteContent);
             
             // Generate with retry
             LLMResponse response = llmService.generateWithRetry(modelUsed, systemPrompt, inputPrompt, 1);
@@ -214,22 +228,29 @@ public class ArtifactGraphService {
     private List<Relationship> extractRelationships(String noteContent, List<Artifact> artifacts, 
                                                    Note note, Campain campaign, String traceId) {
         List<Relationship> relationships = new ArrayList<>();
-        String modelUsed = "o3-mini";
+        String modelUsed = RELATIONSHIP_EXTRACTION_MODEL;
         
         try {
-            // Get ARE prompt from Langfuse using enhanced method with production label
+            // Get ARE prompt from Langfuse
             Map<String, Object> promptVariables = new HashMap<>();
-
-            String systemPrompt = langfuseClient.getPromptWithLabel(
-                    "ArtefactRelationshipExtractor", "production", promptVariables);
-            if (systemPrompt == null) {
-                // Fallback prompt
-                systemPrompt = createFallbackAREPrompt(artifacts);
-                System.out.println("Using fallback ARE prompt due to API fetch failure");
+            promptVariables.put("TEXT", createAREInputPrompt(noteContent, artifacts));
+            
+            PromptContent promptContent = langfuseClient.getPromptContentWithVariables("ArtefactRelationshipExtractor", promptVariables);
+            String systemPrompt;
+            String inputPrompt;
+            if (promptContent != null) {
+                if (promptContent.isText()) {
+                    systemPrompt = promptContent.asText();
+                    inputPrompt = createAREInputPrompt(noteContent, artifacts);
+                } else if (promptContent.isChat()) {
+                    systemPrompt = promptContent.asChatMessages().get(0).getContent();
+                    inputPrompt = promptContent.asChatMessages().get(1).getContent();
+                } else {
+                    throw new RuntimeException("Unsupported prompt type: " + promptContent.getType());
+                }
+            } else {
+                throw new RuntimeException("Failed to get ARE prompt from Langfuse");
             }
-
-            // Create JSON input prompt with 'note' and 'artefacts' fields as required by ARE prompt
-            String inputPrompt = createAREInputPrompt(noteContent, artifacts);
 
             // Generate with retry using o1 (more powerful for relationship detection)
             LLMResponse response = llmService.generateWithRetry(modelUsed, systemPrompt, inputPrompt, 1);
