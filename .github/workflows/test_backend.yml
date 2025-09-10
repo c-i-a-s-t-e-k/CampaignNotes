@@ -1,13 +1,20 @@
 name: Java CI with Neo4j and Qdrant
 
 on:
-  pull_request_target:
+  pull_request:
     types:
+      - opened
+      - synchronize
       - labeled
 
 jobs:
   test:
-    if: ${{github.event.label.name == 'backend'}}
+    if: |
+      github.event_name == 'pull_request' && (
+        github.event.action == 'labeled' && github.event.label.name == 'backend' ||
+        github.event.action == 'opened' && contains(github.event.pull_request.labels.*.name, 'backend') ||
+        github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'backend')
+      )
     runs-on: ubuntu-latest
 
     services:
@@ -29,6 +36,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
 
     - name: Set up JDK 21
       uses: actions/setup-java@v4
