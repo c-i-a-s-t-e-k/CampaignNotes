@@ -5,6 +5,8 @@ import java.util.concurrent.CompletableFuture;
 
 import com.google.gson.JsonObject;
 
+import CampaignNotes.tracking.trace.TraceManager;
+import CampaignNotes.tracking.trace.payload.IngestionPayloadBuilder;
 import model.ModelPricing;
 import model.Note;
 import model.PromptContent;
@@ -18,7 +20,7 @@ import model.PromptContent;
  * - LangfuseHttpClient: HTTP communication
  * - LangfuseModelService: Model pricing and information
  * - LangfusePromptManager: Prompt retrieval and management
- * - LangfuseTracker: AI operations tracking
+ * - TraceManager: AI operations tracking
  * 
  * The facade pattern maintains backward compatibility while providing a clean,
  * modular architecture that follows Single Responsibility Principle.
@@ -49,7 +51,7 @@ public class LangfuseClient {
     private final LangfuseHttpClient httpClient;
     private final LangfuseModelService modelService;
     private final LangfusePromptManager promptManager;
-    private final LangfuseTracker tracker;
+    private final TraceManager traceManager;
     
     /**
      * Default constructor that initializes all components with default configuration.
@@ -60,7 +62,10 @@ public class LangfuseClient {
         this.httpClient = new LangfuseHttpClient(config);
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
-        this.tracker = new LangfuseTracker(httpClient, modelService);
+        
+        // Initialize new tracking components
+        IngestionPayloadBuilder payloadBuilder = new IngestionPayloadBuilder(modelService);
+        this.traceManager = new TraceManager(httpClient, payloadBuilder);
     }
     
     /**
@@ -73,7 +78,10 @@ public class LangfuseClient {
         this.httpClient = new LangfuseHttpClient(config);
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
-        this.tracker = new LangfuseTracker(httpClient, modelService);
+        
+        // Initialize new tracking components
+        IngestionPayloadBuilder payloadBuilder = new IngestionPayloadBuilder(modelService);
+        this.traceManager = new TraceManager(httpClient, payloadBuilder);
     }
     
     // === CONNECTION AND CONFIGURATION METHODS ===
@@ -138,7 +146,7 @@ public class LangfuseClient {
     
     /**
      * Tracks an embedding generation call to Langfuse with full note information.
-     * Delegates to LangfuseTracker.
+     * Delegates to TraceManager.
      * 
      * @param traceId ID of the parent trace to link this generation to
      * @param note the full note that was embedded
@@ -150,12 +158,12 @@ public class LangfuseClient {
      */
     public boolean trackEmbedding(String traceId, Note note, String model, String campaignId, 
                                  int tokensUsed, long durationMs) {
-        return tracker.trackEmbedding(traceId, note, model, campaignId, tokensUsed, durationMs);
+        return traceManager.trackEmbedding(traceId, note, model, campaignId, tokensUsed, durationMs);
     }
     
     /**
      * Tracks an embedding generation call to Langfuse with full note information and custom tags.
-     * Delegates to LangfuseTracker.
+     * Delegates to TraceManager.
      * 
      * @param traceId ID of the parent trace to link this generation to
      * @param note the full note that was embedded
@@ -168,12 +176,12 @@ public class LangfuseClient {
      */
     public boolean trackEmbedding(String traceId, Note note, String model, String campaignId, 
                                  int tokensUsed, long durationMs, List<String> customTags) {
-        return tracker.trackEmbedding(traceId, note, model, campaignId, tokensUsed, durationMs, customTags);
+        return traceManager.trackEmbedding(traceId, note, model, campaignId, tokensUsed, durationMs, customTags);
     }
     
     /**
      * Tracks a note processing session to Langfuse.
-     * Delegates to LangfuseTracker.
+     * Delegates to TraceManager.
      * 
      * @param sessionName name of the session (e.g., "note-processing")
      * @param campaignId the campaign UUID
@@ -182,12 +190,12 @@ public class LangfuseClient {
      * @return trace ID for linking related generations, or null if failed
      */
     public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId) {
-        return tracker.trackNoteProcessingSession(sessionName, campaignId, noteId, userId);
+        return traceManager.createTrace(sessionName, campaignId, noteId, userId);
     }
     
     /**
      * Tracks a note processing session to Langfuse with custom tags.
-     * Delegates to LangfuseTracker.
+     * Delegates to TraceManager.
      * 
      * @param sessionName name of the session (e.g., "note-processing")
      * @param campaignId the campaign UUID
@@ -197,12 +205,12 @@ public class LangfuseClient {
      * @return trace ID for linking related generations, or null if failed
      */
     public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId, List<String> customTags) {
-        return tracker.trackNoteProcessingSession(sessionName, campaignId, noteId, userId, customTags);
+        return traceManager.createTrace(sessionName, campaignId, noteId, userId, customTags, "note-processing");
     }
     
     /**
      * Tracks an LLM generation to Langfuse for observability.
-     * Delegates to LangfuseTracker.
+     * Delegates to TraceManager.
      * 
      * @param traceId the trace ID to associate this generation with
      * @param model the model used (e.g., "o3-mini")
@@ -213,14 +221,17 @@ public class LangfuseClient {
      * @return true if tracked successfully, false otherwise
      */
     public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, int tokens, long duration) {
-        return tracker.trackLLMGeneration(traceId, model, prompt, response, tokens, duration);
+        // For backward compatibility, estimate input/output split
+        int inputTokens = tokens / 2;
+        int outputTokens = tokens - inputTokens;
+        return traceManager.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, tokens, duration);
     }
 
     /**
      * Tracks an LLM generation with separated input/output tokens.
      */
     public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, int inputTokens, int outputTokens, int totalTokens, long duration) {
-        return tracker.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, totalTokens, duration);
+        return traceManager.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, totalTokens, duration);
     }
     
     /**
@@ -241,7 +252,7 @@ public class LangfuseClient {
     public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, 
                                     int inputTokens, int outputTokens, int totalTokens, long duration,
                                     String componentName, String stage) {
-        return tracker.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, totalTokens, duration, componentName, stage);
+        return traceManager.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, totalTokens, duration, componentName, stage);
     }
     
     /**
@@ -257,7 +268,7 @@ public class LangfuseClient {
      */
     public String createTraceWithInput(String traceName, String campaignId, String noteId,
                                      String noteContent, List<String> categories, String workflowType) {
-        return tracker.createTraceWithInput(traceName, campaignId, noteId, noteContent, categories, workflowType);
+        return traceManager.createTraceWithInput(traceName, campaignId, noteId, noteContent, categories, workflowType);
     }
     
     /**
@@ -273,12 +284,12 @@ public class LangfuseClient {
      */
     public boolean updateTraceOutput(String traceId, int artifactsCount, int relationshipsCount,
                                    List<String> artifactIds, String processingStatus, long durationMs) {
-        return tracker.updateTraceOutput(traceId, artifactsCount, relationshipsCount, artifactIds, processingStatus, durationMs);
+        return traceManager.updateTraceOutput(traceId, artifactsCount, relationshipsCount, artifactIds, processingStatus, durationMs);
     }
     
     /**
      * Tracks an artifact extraction workflow session to Langfuse.
-     * Delegates to LangfuseTracker.
+     * Delegates to TraceManager.
      * 
      * @param sessionName name of the session (e.g., "artifact-extraction")
      * @param campaignId the campaign UUID
@@ -286,18 +297,20 @@ public class LangfuseClient {
      * @return trace ID for linking related generations, or null if failed
      */
     public String trackArtifactExtractionWorkflow(String sessionName, String campaignId, String noteId) {
-        return tracker.trackArtifactExtractionWorkflow(sessionName, campaignId, noteId);
+        return traceManager.createTrace(sessionName, campaignId, noteId, null, 
+                                      java.util.Arrays.asList("workflow:artifact-extraction"), 
+                                      "artifact-extraction");
     }
     
     /**
      * Retrieves a trace from Langfuse by its ID asynchronously.
-     * Delegates to LangfuseTracker.
+     * Delegates to TraceManager.
      * 
      * @param traceId the ID of the trace to retrieve
      * @return CompletableFuture containing JsonObject with trace data, or null if not found
      */
     public CompletableFuture<JsonObject> getTrace(String traceId) {
-        return tracker.getTrace(traceId);
+        return traceManager.getTrace(traceId);
     }
     
     // === PROMPT MANAGER DELEGATION ===
@@ -587,12 +600,12 @@ public class LangfuseClient {
     }
     
     /**
-     * Gets the underlying tracker instance.
+     * Gets the underlying trace manager instance.
      * For advanced usage and testing scenarios.
      * 
-     * @return the LangfuseTracker instance
+     * @return the TraceManager instance
      */
-    public LangfuseTracker getTracker() {
-        return tracker;
+    public TraceManager getTraceManager() {
+        return traceManager;
     }
 }

@@ -1,7 +1,12 @@
 package CampaignNotes;
 
 import CampaignNotes.llm.OpenAIEmbeddingService;
-import CampaignNotes.tracking.LangfuseClient;
+import CampaignNotes.tracking.LangfuseConfig;
+import CampaignNotes.tracking.LangfuseHttpClient;
+import CampaignNotes.tracking.LangfuseModelService;
+import CampaignNotes.tracking.trace.TraceManager;
+import CampaignNotes.tracking.trace.payload.IngestionPayloadBuilder;
+import CampaignNotes.tracking.trace.workflow.ArtifactExtractionWorkflow;
 import model.ArtifactProcessingResult;
 import model.Campain;
 import model.EmbeddingResult;
@@ -15,17 +20,26 @@ public class NoteService {
     
     private final CampaignManager campaignManager; 
     private final OpenAIEmbeddingService embeddingService;
-    private final LangfuseClient langfuseClient;
+    private final TraceManager traceManager;
+    private final ArtifactExtractionWorkflow artifactWorkflow;
     private final ArtifactGraphService artifactService;
     
     /**
-     * Constructor initializes all required services.
+     * Constructor initializes all required services with new tracking components.
      */
     public NoteService() {
         this.campaignManager = new CampaignManager();
         this.embeddingService = new OpenAIEmbeddingService();
-        this.langfuseClient = new LangfuseClient();
-        this.artifactService = new ArtifactGraphService();
+        
+        // Initialize new tracking components
+        LangfuseConfig config = new LangfuseConfig();
+        LangfuseHttpClient httpClient = new LangfuseHttpClient(config);
+        LangfuseModelService modelService = new LangfuseModelService(httpClient);
+        IngestionPayloadBuilder payloadBuilder = new IngestionPayloadBuilder(modelService);
+        
+        this.traceManager = new TraceManager(httpClient, payloadBuilder);
+        this.artifactWorkflow = new ArtifactExtractionWorkflow(traceManager);
+        this.artifactService = new ArtifactGraphService(traceManager, artifactWorkflow);
     }
     
     /**
@@ -58,9 +72,8 @@ public class NoteService {
             System.out.println("Override note validation passed: Found existing notes in campaign");
         }
         
-        // Start tracking session in Langfuse
-        String traceId = langfuseClient.trackNoteProcessingSession(
-            "add-note", campaign.getUuid(), note.getId(), null);
+        // Start tracking session using new workflow
+        String traceId = artifactWorkflow.startEmbeddingWorkflow(campaign.getUuid(), note.getId());
         
         try {
             // Generate embedding with exact token usage
@@ -73,8 +86,8 @@ public class NoteService {
             
             long durationMs = System.currentTimeMillis() - startTime;
             
-            // Track embedding generation in Langfuse with full note information and exact tokens
-            langfuseClient.trackEmbedding(
+            // Track embedding generation using new TraceManager
+            traceManager.trackEmbedding(
                 traceId,
                 note,  // Pass the full note object instead of just the text
                 embeddingService.getEmbeddingModel(),
@@ -127,6 +140,7 @@ public class NoteService {
     public boolean checkServicesAvailability() {
         return campaignManager.checkDatabasesAvailability() && 
                embeddingService != null && 
-               langfuseClient.checkConnection();
+               traceManager != null && 
+               artifactWorkflow != null;
     }
 } 
