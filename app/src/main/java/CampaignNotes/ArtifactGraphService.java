@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -78,14 +79,6 @@ public class ArtifactGraphService {
         try {
             System.out.println("Starting artifact processing for note: " + note.getId());
             
-            // Create Langfuse trace for the entire workflow
-            traceId = langfuseClient.trackArtifactExtractionWorkflow(
-                "artifact-extraction", campaign.getUuid(), note.getId());
-            
-            if (traceId == null) {
-                System.err.println("Warning: Failed to create Langfuse trace, continuing without tracking");
-            }
-            
             // Get categories for this campaign
             Map<String, String> categories = categoryService.getCategoriesForCampaign(campaign.getUuid());
             if (categories.isEmpty()) {
@@ -94,13 +87,28 @@ public class ArtifactGraphService {
                 categories = categoryService.getCategoriesForCampaign(campaign.getUuid());
             }
             
+            // Create Langfuse trace for the entire workflow with input data
+            List<String> categoryList = new ArrayList<>(categories.keySet());
+            traceId = langfuseClient.createTraceWithInput(
+                "artifact-extraction", 
+                campaign.getUuid(), 
+                note.getId(),
+                note.getFullTextForEmbedding(),
+                categoryList,
+                "ai-powered-extraction"
+            );
+            
+            if (traceId == null) {
+                System.err.println("Warning: Failed to create Langfuse trace, continuing without tracking");
+            }
+            
             // Check timeout
             if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
                 return new ArtifactProcessingResult("Workflow timeout before artifact extraction", 
                                                    note.getId(), campaign.getUuid());
             }
             
-            // Step 1: Extract artifacts using o1-mini
+            // Step 1: Extract artifacts using o3-mini
             List<Artifact> artifacts = extractArtifacts(note.getFullTextForEmbedding(), categories, 
                                                        note, campaign, traceId);
             
@@ -110,7 +118,7 @@ public class ArtifactGraphService {
                                                    note.getId(), campaign.getUuid());
             }
             
-            // Step 2: Extract relationships using o1 (only if we have artifacts)
+            // Step 2: Extract relationships using o3-mini (only if we have artifacts)
             List<Relationship> relationships = new ArrayList<>();
             if (!artifacts.isEmpty()) {
                 relationships = extractRelationships(note.getFullTextForEmbedding(), artifacts, 
@@ -135,9 +143,37 @@ public class ArtifactGraphService {
                 // Calculate total tokens (rough estimation)
                 int totalTokens = artifacts.size() * 100 + relationships.size() * 150; // Estimation
                 
+                // Update trace with results
+                if (traceId != null) {
+                    List<String> artifactIds = artifacts.stream()
+                        .map(Artifact::getId)
+                        .collect(Collectors.toList());
+                    
+                    langfuseClient.updateTraceOutput(
+                        traceId,
+                        artifacts.size(),
+                        relationships.size(),
+                        artifactIds,
+                        "success",
+                        totalDuration
+                    );
+                }
+                
                 return new ArtifactProcessingResult(artifacts, relationships, totalTokens, 
                                                    totalDuration, note.getId(), campaign.getUuid());
             } else {
+                // Update trace with failure
+                if (traceId != null) {
+                    langfuseClient.updateTraceOutput(
+                        traceId,
+                        artifacts.size(),
+                        relationships.size(),
+                        null,
+                        "failed_neo4j_save",
+                        totalDuration
+                    );
+                }
+                
                 return new ArtifactProcessingResult("Failed to save artifacts to Neo4j", 
                                                    note.getId(), campaign.getUuid());
             }
@@ -148,12 +184,24 @@ public class ArtifactGraphService {
             System.err.println(errorMessage);
             e.printStackTrace();
             
+            // Update trace with error
+            if (traceId != null) {
+                langfuseClient.updateTraceOutput(
+                    traceId,
+                    0,
+                    0,
+                    null,
+                    "error: " + e.getMessage(),
+                    totalDuration
+                );
+            }
+            
             return new ArtifactProcessingResult(errorMessage, note.getId(), campaign.getUuid());
         }
     }
     
     /**
-     * Extracts artifacts from note content using NAE prompt and o1-mini model.
+     * Extracts artifacts from note content using NAE prompt and o3-mini model.
      * 
      * @param noteContent the content to analyze
      * @param categories available categories for this campaign
@@ -187,7 +235,9 @@ public class ArtifactGraphService {
                     throw new RuntimeException("Unsupported prompt type: " + promptContent.getType());
                 }
             }else {
-                throw new RuntimeException("Failed to get NAE prompt from Langfuse");
+                // Fallback to a built-in prompt rather than failing the whole workflow
+                systemPrompt = createFallbackNAEPrompt(categories);
+                inputPrompt = createNAEInputPrompt(noteContent);
             }
             
             // Generate with retry
@@ -195,9 +245,18 @@ public class ArtifactGraphService {
             
             // Track in Langfuse
             if (traceId != null && response.isSuccessful()) {
-                langfuseClient.trackLLMGeneration(traceId, response.getModel(), 
-                                                inputPrompt, response.getContent(), 
-                                                response.getTokensUsed(), response.getDurationMs());
+                langfuseClient.trackLLMGeneration(
+                    traceId,
+                    response.getModel(),
+                    inputPrompt,
+                    response.getContent(),
+                    response.getInputTokens(),
+                    response.getOutputTokens(),
+                    response.getTokensUsed(),
+                    response.getDurationMs(),
+                    "nae-generation",
+                    "artifact-extraction"
+                );
             }
             
             if (response.isSuccessful()) {
@@ -216,7 +275,7 @@ public class ArtifactGraphService {
     }
     
     /**
-     * Extracts relationships between artifacts using ARE prompt and o1 model.
+     * Extracts relationships between artifacts using ARE prompt and o3-mini model.
      * 
      * @param noteContent the content to analyze
      * @param artifacts the previously extracted artifacts
@@ -249,7 +308,9 @@ public class ArtifactGraphService {
                     throw new RuntimeException("Unsupported prompt type: " + promptContent.getType());
                 }
             } else {
-                throw new RuntimeException("Failed to get ARE prompt from Langfuse");
+                // Fallback to a built-in prompt rather than failing the whole workflow
+                systemPrompt = createFallbackAREPrompt(artifacts);
+                inputPrompt = createAREInputPrompt(noteContent, artifacts);
             }
 
             // Generate with retry using o1 (more powerful for relationship detection)
@@ -257,9 +318,18 @@ public class ArtifactGraphService {
             
             // Track in Langfuse
             if (traceId != null && response.isSuccessful()) {
-                langfuseClient.trackLLMGeneration(traceId, response.getModel(), 
-                                                inputPrompt, response.getContent(), 
-                                                response.getTokensUsed(), response.getDurationMs());
+                langfuseClient.trackLLMGeneration(
+                    traceId,
+                    response.getModel(),
+                    inputPrompt,
+                    response.getContent(),
+                    response.getInputTokens(),
+                    response.getOutputTokens(),
+                    response.getTokensUsed(),
+                    response.getDurationMs(),
+                    "are-generation",
+                    "relationship-extraction"
+                );
             }
             
             if (response.isSuccessful()) {

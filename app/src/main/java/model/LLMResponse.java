@@ -11,6 +11,8 @@ public class LLMResponse implements Serializable {
     
     private String content;
     private int tokensUsed;
+    private int inputTokens;
+    private int outputTokens;
     private String model;
     private long durationMs;
     private boolean successful;
@@ -32,6 +34,20 @@ public class LLMResponse implements Serializable {
         this();
         this.content = content;
         this.tokensUsed = tokensUsed;
+        this.model = model;
+        this.durationMs = durationMs;
+        this.successful = true;
+    }
+    
+    /**
+     * Constructor for successful response with separate input/output tokens
+     */
+    public LLMResponse(String content, int inputTokens, int outputTokens, String model, long durationMs) {
+        this();
+        this.content = content;
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
+        this.tokensUsed = inputTokens + outputTokens;
         this.model = model;
         this.durationMs = durationMs;
         this.successful = true;
@@ -61,6 +77,22 @@ public class LLMResponse implements Serializable {
     
     public void setTokensUsed(int tokensUsed) {
         this.tokensUsed = tokensUsed;
+    }
+    
+    public int getInputTokens() {
+        return inputTokens;
+    }
+    
+    public void setInputTokens(int inputTokens) {
+        this.inputTokens = inputTokens;
+    }
+    
+    public int getOutputTokens() {
+        return outputTokens;
+    }
+    
+    public void setOutputTokens(int outputTokens) {
+        this.outputTokens = outputTokens;
     }
     
     public String getModel() {

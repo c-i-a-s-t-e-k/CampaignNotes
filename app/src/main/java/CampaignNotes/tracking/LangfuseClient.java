@@ -205,7 +205,7 @@ public class LangfuseClient {
      * Delegates to LangfuseTracker.
      * 
      * @param traceId the trace ID to associate this generation with
-     * @param model the model used (e.g., "o1-mini", "o1")
+     * @param model the model used (e.g., "o3-mini")
      * @param prompt the input prompt sent to the model
      * @param response the response received from the model
      * @param tokens number of tokens used
@@ -214,6 +214,66 @@ public class LangfuseClient {
      */
     public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, int tokens, long duration) {
         return tracker.trackLLMGeneration(traceId, model, prompt, response, tokens, duration);
+    }
+
+    /**
+     * Tracks an LLM generation with separated input/output tokens.
+     */
+    public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, int inputTokens, int outputTokens, int totalTokens, long duration) {
+        return tracker.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, totalTokens, duration);
+    }
+    
+    /**
+     * Tracks an LLM generation with component identification (NAE/ARE).
+     * 
+     * @param traceId the trace ID to associate this generation with
+     * @param model the model used (e.g., "o3-mini")
+     * @param prompt the input prompt sent to the model
+     * @param response the response received from the model
+     * @param inputTokens exact input token count
+     * @param outputTokens exact output token count
+     * @param totalTokens exact total token count
+     * @param duration duration of the operation in milliseconds
+     * @param componentName name identifying the component (e.g., "nae-generation", "are-generation")
+     * @param stage processing stage (e.g., "artifact-extraction", "relationship-extraction")
+     * @return true if tracked successfully, false otherwise
+     */
+    public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, 
+                                    int inputTokens, int outputTokens, int totalTokens, long duration,
+                                    String componentName, String stage) {
+        return tracker.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, totalTokens, duration, componentName, stage);
+    }
+    
+    /**
+     * Creates a trace through ingestion API with structured input/output support.
+     * 
+     * @param traceName name of the trace
+     * @param campaignId campaign UUID
+     * @param noteId note ID being processed
+     * @param noteContent full note content for preview generation
+     * @param categories list of available categories
+     * @param workflowType type of workflow (e.g., "ai-powered-extraction")
+     * @return trace ID if successful, null otherwise
+     */
+    public String createTraceWithInput(String traceName, String campaignId, String noteId,
+                                     String noteContent, List<String> categories, String workflowType) {
+        return tracker.createTraceWithInput(traceName, campaignId, noteId, noteContent, categories, workflowType);
+    }
+    
+    /**
+     * Updates an existing trace with output results.
+     * 
+     * @param traceId the trace ID to update
+     * @param artifactsCount number of artifacts extracted
+     * @param relationshipsCount number of relationships found
+     * @param artifactIds list of artifact IDs created
+     * @param processingStatus final status (success/failure)
+     * @param durationMs total processing duration
+     * @return true if update successful, false otherwise
+     */
+    public boolean updateTraceOutput(String traceId, int artifactsCount, int relationshipsCount,
+                                   List<String> artifactIds, String processingStatus, long durationMs) {
+        return tracker.updateTraceOutput(traceId, artifactsCount, relationshipsCount, artifactIds, processingStatus, durationMs);
     }
     
     /**

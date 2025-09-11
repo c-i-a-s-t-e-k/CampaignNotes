@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import CampaignNotes.tracking.LangfuseClient;
-import model.PromptContent;
 
 public class App {
     public String getGreeting() {
@@ -56,12 +55,10 @@ public class App {
         variables.put("TEXT", "some random text");
 
 
-        PromptContent promptContent = langfuseClient.getPromptContentWithVariables("ArtefactRetactionPromptForTesting", variables);
-        System.out.println("Chat Prompt with variables: " + (promptContent != null ? promptContent.asText() : "null"));    
-        // // Start Terminal Interface
-        // System.out.println("\nStarting Terminal Interface...");
-        // TerminalInterface terminalInterface = new TerminalInterface();
-        // terminalInterface.start();
+        // Start Terminal Interface
+        System.out.println("\nStarting Terminal Interface...");
+        TerminalInterface terminalInterface = new TerminalInterface();
+        terminalInterface.start();
 
 
         
