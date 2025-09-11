@@ -5,8 +5,10 @@ import CampaignNotes.tracking.LangfuseConfig;
 import CampaignNotes.tracking.LangfuseHttpClient;
 import CampaignNotes.tracking.LangfuseModelService;
 import CampaignNotes.tracking.trace.TraceManager;
+import CampaignNotes.tracking.trace.observations.EmbedingObservation;
 import CampaignNotes.tracking.trace.payload.IngestionPayloadBuilder;
-import CampaignNotes.tracking.trace.workflow.ArtifactExtractionWorkflow;
+import CampaignNotes.tracking.trace.traces.Trace;
+import CampaignNotes.tracking.trace.traces.TraceType;
 import model.ArtifactProcessingResult;
 import model.Campain;
 import model.EmbeddingResult;
@@ -21,7 +23,6 @@ public class NoteService {
     private final CampaignManager campaignManager; 
     private final OpenAIEmbeddingService embeddingService;
     private final TraceManager traceManager;
-    private final ArtifactExtractionWorkflow artifactWorkflow;
     private final ArtifactGraphService artifactService;
     
     /**
@@ -38,8 +39,7 @@ public class NoteService {
         IngestionPayloadBuilder payloadBuilder = new IngestionPayloadBuilder(modelService);
         
         this.traceManager = new TraceManager(httpClient, payloadBuilder);
-        this.artifactWorkflow = new ArtifactExtractionWorkflow(traceManager);
-        this.artifactService = new ArtifactGraphService(traceManager, artifactWorkflow);
+        this.artifactService = new ArtifactGraphService(traceManager);
     }
     
     /**
@@ -72,8 +72,24 @@ public class NoteService {
             System.out.println("Override note validation passed: Found existing notes in campaign");
         }
         
-        // Start tracking session using new workflow
-        String traceId = artifactWorkflow.startEmbeddingWorkflow(campaign.getUuid(), note.getId());
+        // Start tracking session using new TraceManager with appropriate TraceType
+        String traceId = null;
+        try {
+            Trace trace = traceManager.createTraceByType(
+                "note-embedding", 
+                campaign.getUuid(), 
+                note.getId(), 
+                null, // userId
+                java.util.Collections.emptyList(), // customTags
+                "embedding-generation", // workflowType
+                TraceType.EMBEDDING_TRACE // Use appropriate enum for embedding operations
+            );
+            trace.initialize().get(); // Wait for initialization
+            traceId = trace.getTraceId();
+        } catch (Exception e) {
+            System.err.println("Error creating trace for embedding: " + e.getMessage());
+        }
+        
         
         try {
             // Generate embedding with exact token usage
@@ -84,17 +100,23 @@ public class NoteService {
             EmbeddingResult embeddingResult = 
                 embeddingService.generateEmbeddingWithUsage(textForEmbedding);
             
-            long durationMs = System.currentTimeMillis() - startTime;
-            
-            // Track embedding generation using new TraceManager
-            traceManager.trackEmbedding(
-                traceId,
-                note,  // Pass the full note object instead of just the text
-                embeddingService.getEmbeddingModel(),
-                campaign.getUuid(),
-                embeddingResult.getTokensUsed(),  // Use exact token count from OpenAI
-                durationMs
-            );
+            // Track embedding generation using direct observation creation
+            try {
+                EmbedingObservation observation = new EmbedingObservation(
+                    "note-embedding", 
+                    traceManager.getHttpClient(), 
+                    traceManager.getPayloadBuilder()
+                )
+                    .withNote(note)
+                    .withCampaignId(campaign.getUuid())
+                    .withModel(embeddingService.getEmbeddingModel())
+                    .withTokenUsage(embeddingResult.getTokensUsed())
+                    .finalizeForSending();
+                
+                observation.sendToTrace(traceId).get(); // Wait for completion
+            } catch (Exception e) {
+                System.err.println("Error tracking embedding: " + e.getMessage());
+            }
             
             // Delegate storage to CampaignManager
             boolean stored = campaignManager.addNoteToCampaign(note, campaign, embeddingResult.getEmbedding());
@@ -140,7 +162,6 @@ public class NoteService {
     public boolean checkServicesAvailability() {
         return campaignManager.checkDatabasesAvailability() && 
                embeddingService != null && 
-               traceManager != null && 
-               artifactWorkflow != null;
+               traceManager != null;
     }
 } 

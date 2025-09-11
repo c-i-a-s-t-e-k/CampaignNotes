@@ -15,7 +15,9 @@ import com.google.gson.JsonParser;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.LangfuseClient;
 import CampaignNotes.tracking.trace.TraceManager;
-import CampaignNotes.tracking.trace.workflow.ArtifactExtractionWorkflow;
+import CampaignNotes.tracking.trace.observations.GenerationObservation;
+import CampaignNotes.tracking.trace.traces.Trace;
+import CampaignNotes.tracking.trace.traces.TraceType;
 import model.Artifact;
 import model.ArtifactProcessingResult;
 import model.Campain;
@@ -33,7 +35,6 @@ public class ArtifactGraphService {
     private final OpenAILLMService llmService;
     private final LangfuseClient langfuseClient;
     private final TraceManager traceManager;
-    private final ArtifactExtractionWorkflow artifactWorkflow;
     private final ArtifactCategoryService categoryService;
     private final DataBaseLoader dbLoader;
     private final Gson gson;
@@ -52,7 +53,6 @@ public class ArtifactGraphService {
         this.llmService = new OpenAILLMService();
         this.langfuseClient = new LangfuseClient();
         this.traceManager = null; // Will use langfuseClient for backward compatibility
-        this.artifactWorkflow = null;
         this.categoryService = new ArtifactCategoryService();
         this.dbLoader = new DataBaseLoader();
         this.gson = new Gson();
@@ -61,11 +61,10 @@ public class ArtifactGraphService {
     /**
      * Constructor for dependency injection with new tracking components
      */
-    public ArtifactGraphService(TraceManager traceManager, ArtifactExtractionWorkflow artifactWorkflow) {
+    public ArtifactGraphService(TraceManager traceManager) {
         this.llmService = new OpenAILLMService();
         this.langfuseClient = null; // Using new tracking components
         this.traceManager = traceManager;
-        this.artifactWorkflow = artifactWorkflow;
         this.categoryService = new ArtifactCategoryService();
         this.dbLoader = new DataBaseLoader();
         this.gson = new Gson();
@@ -79,7 +78,6 @@ public class ArtifactGraphService {
         this.llmService = llmService;
         this.langfuseClient = langfuseClient;
         this.traceManager = null;
-        this.artifactWorkflow = null;
         this.categoryService = categoryService;
         this.dbLoader = dbLoader;
         this.gson = new Gson();
@@ -95,7 +93,7 @@ public class ArtifactGraphService {
      */
     public ArtifactProcessingResult processNoteArtifacts(Note note, Campain campaign) {
         long startTime = System.currentTimeMillis();
-        String traceId = null;
+        Trace trace = null; // Work with Trace object for proper lifecycle management
         
         try {
             System.out.println("Starting artifact processing for note: " + note.getId());
@@ -108,29 +106,25 @@ public class ArtifactGraphService {
                 categories = categoryService.getCategoriesForCampaign(campaign.getUuid());
             }
             
-            // Create workflow trace using new or legacy tracking
+            // TRACE LIFECYCLE START: Create and initialize trace
             List<String> categoryList = new ArrayList<>(categories.keySet());
-            if (artifactWorkflow != null) {
-                // Use new workflow tracking
-                traceId = artifactWorkflow.startNoteProcessing(
-                    campaign.getUuid(), 
-                    note.getId(),
-                    note.getFullTextForEmbedding(),
-                    categoryList
-                );
-            } else if (langfuseClient != null) {
-                // Fallback to legacy tracking
-                traceId = langfuseClient.createTraceWithInput(
+            try {
+                trace = traceManager.createTraceWithInput(
                     "artifact-extraction", 
                     campaign.getUuid(), 
                     note.getId(),
                     note.getFullTextForEmbedding(),
                     categoryList,
-                    "ai-powered-extraction"
+                    TraceType.ARTIFACT_RELATION_TRACE,
+                    null
                 );
+                System.out.println("Trace initialized successfully: " + (trace != null ? trace.getTraceId() : "null"));
+            } catch (Exception e) {
+                System.err.println("Error creating trace: " + e.getMessage());
+                trace = null;
             }
             
-            if (traceId == null) {
+            if (trace == null) {
                 System.err.println("Warning: Failed to create trace, continuing without tracking");
             }
             
@@ -142,10 +136,11 @@ public class ArtifactGraphService {
             
             // Step 1: Extract artifacts using o3-mini
             List<Artifact> artifacts = extractArtifacts(note.getFullTextForEmbedding(), categories, 
-                                                       note, campaign, traceId);
+                                                       note, campaign, trace);
             
             // Check timeout
             if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
+                finalizeTraceWithError(trace, "Workflow timeout after artifact extraction", startTime);
                 return new ArtifactProcessingResult("Workflow timeout after artifact extraction", 
                                                    note.getId(), campaign.getUuid());
             }
@@ -154,11 +149,12 @@ public class ArtifactGraphService {
             List<Relationship> relationships = new ArrayList<>();
             if (!artifacts.isEmpty()) {
                 relationships = extractRelationships(note.getFullTextForEmbedding(), artifacts, 
-                                                    note, campaign, traceId);
+                                                    note, campaign, trace);
             }
             
             // Check timeout
             if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
+                finalizeTraceWithError(trace, "Workflow timeout after relationship extraction", startTime);
                 return new ArtifactProcessingResult("Workflow timeout after relationship extraction", 
                                                    note.getId(), campaign.getUuid());
             }
@@ -175,54 +171,14 @@ public class ArtifactGraphService {
                 // Calculate total tokens (rough estimation)
                 int totalTokens = artifacts.size() * 100 + relationships.size() * 150; // Estimation
                 
-                // Update trace with results using new or legacy tracking
-                if (traceId != null) {
-                    List<String> artifactIds = artifacts.stream()
-                        .map(Artifact::getId)
-                        .collect(Collectors.toList());
-                    
-                    if (artifactWorkflow != null) {
-                        // Use new workflow tracking
-                        artifactWorkflow.completeWithResults(
-                            traceId,
-                            artifacts.size(),
-                            relationships.size(),
-                            artifactIds
-                        );
-                    } else if (langfuseClient != null) {
-                        // Fallback to legacy tracking
-                        langfuseClient.updateTraceOutput(
-                            traceId,
-                            artifacts.size(),
-                            relationships.size(),
-                            artifactIds,
-                            "success",
-                            totalDuration
-                        );
-                    }
-                }
+                // TRACE LIFECYCLE END: Finalize trace with successful results
+                finalizeTraceWithSuccess(trace, artifacts, relationships, totalTokens, totalDuration);
                 
                 return new ArtifactProcessingResult(artifacts, relationships, totalTokens, 
                                                    totalDuration, note.getId(), campaign.getUuid());
             } else {
-                // Update trace with failure using new or legacy tracking
-                if (traceId != null) {
-                    if (artifactWorkflow != null) {
-                        // Use new workflow tracking
-                        artifactWorkflow.markAsFailed(traceId, "Failed to save artifacts to Neo4j", 
-                                                    artifacts.size(), relationships.size());
-                    } else if (langfuseClient != null) {
-                        // Fallback to legacy tracking
-                        langfuseClient.updateTraceOutput(
-                            traceId,
-                            artifacts.size(),
-                            relationships.size(),
-                            null,
-                            "failed_neo4j_save",
-                            totalDuration
-                        );
-                    }
-                }
+                // TRACE LIFECYCLE END: Finalize trace with failure
+                finalizeTraceWithError(trace, "Failed to save artifacts to Neo4j", startTime);
                 
                 return new ArtifactProcessingResult("Failed to save artifacts to Neo4j", 
                                                    note.getId(), campaign.getUuid());
@@ -234,23 +190,8 @@ public class ArtifactGraphService {
             System.err.println(errorMessage);
             e.printStackTrace();
             
-            // Update trace with error using new or legacy tracking
-            if (traceId != null) {
-                if (artifactWorkflow != null) {
-                    // Use new workflow tracking
-                    artifactWorkflow.markAsFailed(traceId, e.getMessage(), 0, 0);
-                } else if (langfuseClient != null) {
-                    // Fallback to legacy tracking
-                    langfuseClient.updateTraceOutput(
-                        traceId,
-                        0,
-                        0,
-                        null,
-                        "error: " + e.getMessage(),
-                        totalDuration
-                    );
-                }
-            }
+            // TRACE LIFECYCLE END: Finalize trace with exception error
+            finalizeTraceWithError(trace, e.getMessage(), startTime);
             
             return new ArtifactProcessingResult(errorMessage, note.getId(), campaign.getUuid());
         }
@@ -263,11 +204,11 @@ public class ArtifactGraphService {
      * @param categories available categories for this campaign
      * @param note the original note
      * @param campaign the campaign
-     * @param traceId Langfuse trace ID for tracking
+     * @param trace Trace object for proper lifecycle management
      * @return List of extracted artifacts
      */
     private List<Artifact> extractArtifacts(String noteContent, Map<String, String> categories, 
-                                           Note note, Campain campaign, String traceId) {
+                                           Note note, Campain campaign, Trace trace) {
         String modelUsed = ARTIFACT_EXTRACTION_MODEL;
         List<Artifact> artifacts = new ArrayList<>();
         
@@ -299,33 +240,27 @@ public class ArtifactGraphService {
             // Generate with retry
             LLMResponse response = llmService.generateWithRetry(modelUsed, systemPrompt, inputPrompt, 1);
             
-            // Track in Langfuse using new or legacy tracking
-            if (traceId != null && response.isSuccessful()) {
-                if (artifactWorkflow != null) {
-                    // Use new workflow tracking
-                    artifactWorkflow.addNAEObservation(
-                        traceId,
-                        inputPrompt,
-                        response.getContent(),
-                        response.getInputTokens(),
-                        response.getOutputTokens(),
-                        response.getDurationMs(),
-                        response.getModel()
-                    );
-                } else if (langfuseClient != null) {
-                    // Fallback to legacy tracking
-                    langfuseClient.trackLLMGeneration(
-                        traceId,
-                        response.getModel(),
-                        inputPrompt,
-                        response.getContent(),
-                        response.getInputTokens(),
-                        response.getOutputTokens(),
-                        response.getTokensUsed(),
-                        response.getDurationMs(),
-                        "nae-generation",
-                        "artifact-extraction"
-                    );
+            // TRACE LIFECYCLE: Add NAE observation to trace
+            if (trace != null && response.isSuccessful()) {
+                try {
+                    GenerationObservation observation = new GenerationObservation(
+                        "nae-generation", 
+                        traceManager.getHttpClient(), 
+                        traceManager.getPayloadBuilder()
+                    )
+                        .withModel(response.getModel())
+                        .withPrompt(inputPrompt)
+                        .withResponse(response.getContent())
+                        .withTokenUsage(response.getInputTokens(), response.getOutputTokens(), 
+                            response.getTokensUsed())
+                        .withComponent("nae")
+                        .withStage("artifact-extraction")
+                        .finalizeForSending();
+                    
+                    // Add observation to trace (proper trace lifecycle)
+                    traceManager.trackNewObservation(trace, observation);
+                } catch (Exception e) {
+                    System.err.println("Error tracking NAE observation: " + e.getMessage());
                 }
             }
             
@@ -351,11 +286,11 @@ public class ArtifactGraphService {
      * @param artifacts the previously extracted artifacts
      * @param note the original note
      * @param campaign the campaign
-     * @param traceId Langfuse trace ID for tracking
+     * @param trace Trace object for proper lifecycle management
      * @return List of extracted relationships
      */
     private List<Relationship> extractRelationships(String noteContent, List<Artifact> artifacts, 
-                                                   Note note, Campain campaign, String traceId) {
+                                                   Note note, Campain campaign, Trace trace) {
         List<Relationship> relationships = new ArrayList<>();
         String modelUsed = RELATIONSHIP_EXTRACTION_MODEL;
         
@@ -386,33 +321,27 @@ public class ArtifactGraphService {
             // Generate with retry using o1 (more powerful for relationship detection)
             LLMResponse response = llmService.generateWithRetry(modelUsed, systemPrompt, inputPrompt, 1);
             
-            // Track in Langfuse using new or legacy tracking
-            if (traceId != null && response.isSuccessful()) {
-                if (artifactWorkflow != null) {
-                    // Use new workflow tracking
-                    artifactWorkflow.addAREObservation(
-                        traceId,
-                        inputPrompt,
-                        response.getContent(),
-                        response.getInputTokens(),
-                        response.getOutputTokens(),
-                        response.getDurationMs(),
-                        response.getModel()
-                    );
-                } else if (langfuseClient != null) {
-                    // Fallback to legacy tracking
-                    langfuseClient.trackLLMGeneration(
-                        traceId,
-                        response.getModel(),
-                        inputPrompt,
-                        response.getContent(),
-                        response.getInputTokens(),
-                        response.getOutputTokens(),
-                        response.getTokensUsed(),
-                        response.getDurationMs(),
-                        "are-generation",
-                        "relationship-extraction"
-                    );
+            // TRACE LIFECYCLE: Add ARE observation to trace
+            if (trace != null && response.isSuccessful()) {
+                try {
+                    GenerationObservation observation = new GenerationObservation(
+                        "are-generation", 
+                        traceManager.getHttpClient(), 
+                        traceManager.getPayloadBuilder()
+                    )
+                        .withModel(response.getModel())
+                        .withPrompt(inputPrompt)
+                        .withResponse(response.getContent())
+                        .withTokenUsage(response.getInputTokens(), response.getOutputTokens(), 
+                            response.getTokensUsed())
+                        .withComponent("are")
+                        .withStage("relationship-extraction")
+                        .finalizeForSending();
+                    
+                    // Add observation to trace (proper trace lifecycle)
+                    traceManager.trackNewObservation(trace, observation);
+                } catch (Exception e) {
+                    System.err.println("Error tracking ARE observation: " + e.getMessage());
                 }
             }
             
@@ -716,5 +645,59 @@ public class ArtifactGraphService {
                    .replaceAll("_{2,}", "_")           // Replace multiple underscores with single
                    .replaceAll("^_+|_+$", "")         // Remove leading/trailing underscores
                    .substring(0, Math.min(input.length(), 100)); // Limit length to prevent very long labels
+    }
+    
+    /**
+     * Finalizes trace with successful results (proper trace lifecycle completion).
+     * 
+     * @param trace the trace to finalize
+     * @param artifacts extracted artifacts
+     * @param relationships extracted relationships
+     * @param totalTokens total tokens used
+     * @param totalDuration total processing duration
+     */
+    private void finalizeTraceWithSuccess(Trace trace, List<Artifact> artifacts, 
+                                         List<Relationship> relationships, int totalTokens, long totalDuration) {
+        if (trace != null && !trace.isFinalized()) {
+            try {
+                // Use TraceManager's updateTraceOutput method for proper lifecycle
+                List<String> artifactIds = artifacts.stream()
+                    .map(Artifact::getId)
+                    .collect(Collectors.toList());
+                
+                traceManager.updateTraceOutput(trace, artifacts.size(), relationships.size(), 
+                    artifactIds, "success", totalDuration).join(); // Wait for completion
+                
+                System.out.println("Trace finalized successfully: " + trace.getTraceId() + 
+                    " (artifacts: " + artifacts.size() + ", relationships: " + relationships.size() + ")");
+                
+            } catch (Exception e) {
+                System.err.println("Error finalizing trace with success: " + e.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * Finalizes trace with error (proper trace lifecycle completion on failure).
+     * 
+     * @param trace the trace to finalize
+     * @param errorMessage error message
+     * @param startTime workflow start time
+     */
+    private void finalizeTraceWithError(Trace trace, String errorMessage, long startTime) {
+        if (trace != null && !trace.isFinalized()) {
+            try {
+                long totalDuration = System.currentTimeMillis() - startTime;
+                
+                // Use TraceManager's updateTraceOutput method for proper lifecycle
+                traceManager.updateTraceOutput(trace, 0, 0, 
+                    java.util.Collections.emptyList(), "error: " + errorMessage, totalDuration).join();
+                
+                System.err.println("Trace finalized with error: " + trace.getTraceId() + " - " + errorMessage);
+                
+            } catch (Exception e) {
+                System.err.println("Error finalizing trace with error: " + e.getMessage());
+            }
+        }
     }
 } 

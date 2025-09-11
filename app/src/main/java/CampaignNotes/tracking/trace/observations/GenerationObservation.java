@@ -1,120 +1,54 @@
 package CampaignNotes.tracking.trace.observations;
 
+import java.net.http.HttpResponse;
+import java.util.concurrent.CompletableFuture;
+
 import com.google.gson.JsonObject;
 
-import CampaignNotes.tracking.trace.TraceManager;
+import CampaignNotes.tracking.LangfuseHttpClient;
+import CampaignNotes.tracking.trace.payload.PayloadBuilder;
 
 /**
- * Builder for creating LLM generation observations with fluent API.
+ * Observation implementation for LLM text generation operations.
  * 
- * This class provides a clean, fluent interface for building generation observations
- * specifically optimized for NAE (Note Artifact Extraction) and ARE (Artifact 
- * Relationship Extraction) operations. It follows Spring Boot best practices:
- * - Builder Pattern: Provides fluent API for complex object construction
- * - Immutability: Builder state is encapsulated and validated
- * - Single Responsibility: Focuses only on generation observation creation
- * - Validation: Ensures required fields are provided before building
+ * This observation type tracks LLM interactions for NAE (Note Artifact Extraction)
+ * and ARE (Artifact Relationship Extraction) operations. It captures input prompts,
+ * model responses, token usage, timing information, and component identification.
  * 
- * Usage examples:
- * <pre>
- * // NAE generation
- * boolean success = traceManager.generation("nae-generation")
- *     .model("o3-mini")
- *     .input(prompt)
- *     .output(response)
- *     .usage(inputTokens, outputTokens, totalTokens)
- *     .withComponent("nae")
- *     .withStage("artifact-extraction")
- *     .addTo(traceId);
- * 
- * // ARE generation
- * boolean success = traceManager.generation("are-generation")
- *     .model("o3-mini")
- *     .input(prompt)
- *     .output(response)
- *     .usage(inputTokens, outputTokens, totalTokens)
- *     .withComponent("are")
- *     .withStage("relationship-extraction")
- *     .addTo(traceId);
- * </pre>
+ * Based on Langfuse documentation, this creates a generation observation
+ * specifically optimized for structured LLM generation tasks.
  */
-public class GenerationObservation extends Observation{
+public class GenerationObservation extends Observation {
     
-    private final String name;
-    private final String model;
-    private final JsonObject input;
-    private final JsonObject output;
-    private final JsonObject usage;
-    private final String componentName;
-    private final String stage;
-    private final long duration;
-    
+    private String prompt;
+    private String response;
+    private int inputTokens;
+    private int outputTokens;
+    private int totalTokens;
+    private String componentName;
+    private String stage;
+
     /**
-     * Private constructor - use Builder to create instances.
-     */
-    private GenerationObservation(Builder builder) {
-        this.name = builder.name;
-        this.model = builder.model;
-        this.input = builder.input;
-        this.output = builder.output;
-        this.usage = builder.usage;
-        this.componentName = builder.componentName;
-        this.stage = builder.stage;
-        this.duration = builder.duration;
-    }
-    
-    // Getters for accessing built observation data
-    public String getName() { return name; }
-    public String getModel() { return model; }
-    public JsonObject getInput() { return input; }
-    public JsonObject getOutput() { return output; }
-    public JsonObject getUsage() { return usage; }
-    public String getComponentName() { return componentName; }
-    public String getStage() { return stage; }
-    public long getDuration() { return duration; }
-    
-    /**
-     * Fluent builder for GenerationObservation.
+     * Constructor for GenerationObservation.
      * 
-     * Provides a clean API for constructing generation observations with proper
-     * validation and default values. The builder ensures all required fields
-     * are provided before allowing the observation to be built or sent.
+     * @param name the observation name (e.g., "nae-generation", "are-generation")
+     * @param httpClient HTTP client for API communication
+     * @param payloadBuilder payload builder for JSON creation
      */
-    public static class Builder {
-
-        private final String name;
-        private final TraceManager traceManager;
-
-        // Required fields
-        private String model;
-        private JsonObject input;
-        private JsonObject output;
-        private JsonObject usage;
-
-        // Optional fields with defaults
-        private String componentName = "llm-generation";
-        private String stage = "processing";
-        private long duration = 0;
-
-        /**
-         * Package-private constructor - only TraceManager can create builders.
-         *
-         * @param name         the name for the generation observation
-         * @param traceManager the trace manager for sending observations
-         */
-        public Builder(String name, TraceManager traceManager) {
-            this.name = name;
-            this.traceManager = traceManager;
+    public GenerationObservation(String name, LangfuseHttpClient httpClient, PayloadBuilder payloadBuilder) {
+        super(name, ObservationType.GENERATION_OBSERVATION, httpClient, payloadBuilder);
+        this.componentName = "llm-generation"; // Default component name
+        this.stage = "processing"; // Default stage
         }
 
         /**
          * Sets the model used for generation.
          *
          * @param model the AI model (e.g., "o3-mini", "gpt-4")
-         * @return this builder for method chaining
+     * @return this observation for method chaining
          */
-        public Builder model(String model) {
-            this.model = model;
+    public GenerationObservation withModel(String model) {
+        setModel(model);
             return this;
         }
 
@@ -122,11 +56,15 @@ public class GenerationObservation extends Observation{
          * Sets the input prompt as plain text.
          *
          * @param prompt the input prompt text
-         * @return this builder for method chaining
-         */
-        public Builder input(String prompt) {
-            this.input = new JsonObject();
-            this.input.addProperty("text", prompt);
+     * @return this observation for method chaining
+     */
+    public GenerationObservation withPrompt(String prompt) {
+        this.prompt = prompt;
+        
+        JsonObject inputJson = new JsonObject();
+        inputJson.addProperty("text", prompt);
+        setInput(inputJson);
+        
             return this;
         }
 
@@ -134,10 +72,19 @@ public class GenerationObservation extends Observation{
          * Sets the input as structured JSON object.
          *
          * @param inputJson structured input data
-         * @return this builder for method chaining
-         */
-        public Builder input(JsonObject inputJson) {
-            this.input = inputJson;
+     * @return this observation for method chaining
+     */
+    public GenerationObservation withStructuredInput(JsonObject inputJson) {
+        // Extract text if available for prompt field
+        if (inputJson.has("text")) {
+            this.prompt = inputJson.get("text").getAsString();
+        } else if (inputJson.has("user")) {
+            this.prompt = inputJson.get("user").getAsString();
+        } else {
+            this.prompt = inputJson.toString();
+        }
+        
+        setInput(inputJson);
             return this;
         }
 
@@ -145,11 +92,15 @@ public class GenerationObservation extends Observation{
          * Sets the output response as plain text.
          *
          * @param response the model response text
-         * @return this builder for method chaining
-         */
-        public Builder output(String response) {
-            this.output = new JsonObject();
-            this.output.addProperty("text", response);
+     * @return this observation for method chaining
+     */
+    public GenerationObservation withResponse(String response) {
+        this.response = response;
+        
+        JsonObject outputJson = new JsonObject();
+        outputJson.addProperty("text", response);
+        setOutput(outputJson);
+        
             return this;
         }
 
@@ -157,26 +108,32 @@ public class GenerationObservation extends Observation{
          * Sets the output as structured JSON object.
          *
          * @param outputJson structured output data
-         * @return this builder for method chaining
-         */
-        public Builder output(JsonObject outputJson) {
-            this.output = outputJson;
+     * @return this observation for method chaining
+     */
+    public GenerationObservation withStructuredOutput(JsonObject outputJson) {
+        // Extract text if available for response field
+        if (outputJson.has("text")) {
+            this.response = outputJson.get("text").getAsString();
+        } else {
+            this.response = outputJson.toString();
+        }
+        
+        setOutput(outputJson);
             return this;
         }
 
         /**
          * Sets token usage information.
          *
-         * @param inputTokens  exact input token count
+     * @param inputTokens exact input token count
          * @param outputTokens exact output token count
-         * @param totalTokens  exact total token count
-         * @return this builder for method chaining
-         */
-        public Builder usage(int inputTokens, int outputTokens, int totalTokens) {
-            this.usage = new JsonObject();
-            this.usage.addProperty("promptTokens", inputTokens);
-            this.usage.addProperty("completionTokens", outputTokens);
-            this.usage.addProperty("totalTokens", totalTokens);
+     * @param totalTokens exact total token count
+     * @return this observation for method chaining
+     */
+    public GenerationObservation withTokenUsage(int inputTokens, int outputTokens, int totalTokens) {
+        this.inputTokens = inputTokens;
+        this.outputTokens = outputTokens;
+        this.totalTokens = totalTokens;
             return this;
         }
 
@@ -184,9 +141,9 @@ public class GenerationObservation extends Observation{
          * Sets the component name for identification.
          *
          * @param component component identifier (e.g., "nae", "are")
-         * @return this builder for method chaining
+     * @return this observation for method chaining
          */
-        public Builder withComponent(String component) {
+    public GenerationObservation withComponent(String component) {
             this.componentName = component;
             return this;
         }
@@ -195,124 +152,94 @@ public class GenerationObservation extends Observation{
          * Sets the processing stage.
          *
          * @param stage processing stage (e.g., "artifact-extraction", "relationship-extraction")
-         * @return this builder for method chaining
+     * @return this observation for method chaining
          */
-        public Builder withStage(String stage) {
+    public GenerationObservation withStage(String stage) {
             this.stage = stage;
             return this;
         }
 
         /**
-         * Sets the operation duration.
-         *
-         * @param durationMs duration in milliseconds
-         * @return this builder for method chaining
-         */
-        public Builder duration(long durationMs) {
-            this.duration = durationMs;
-            return this;
-        }
-
-        /**
-         * Builds and sends the observation to the specified trace.
-         *
-         * This is the terminal operation that validates all required fields,
-         * builds the observation payload, and sends it via TraceManager.
-         *
-         * @param traceId the trace ID to associate this observation with
-         * @return true if the observation was successfully sent, false otherwise
-         * @throws IllegalStateException if required fields are missing
-         */
+     * Finalizes the observation and prepares it for sending.
+     * 
+     * @return this observation for method chaining
+     */
+    public GenerationObservation finalizeForSending() {
+        finalizeObservation();
+        
+        // Create comprehensive metadata
+        JsonObject metadataJson = new JsonObject();
+        metadataJson.addProperty("component", componentName);
+        metadataJson.addProperty("stage", stage);
+        metadataJson.addProperty("operation_duration_ms", getDurationMs());
+        metadataJson.addProperty("token_usage_source", "exact_from_provider");
+        metadataJson.addProperty("input_tokens", inputTokens);
+        metadataJson.addProperty("output_tokens", outputTokens);
+        metadataJson.addProperty("total_tokens", totalTokens);
+        
+        setMetadata(metadataJson);
+        return this;
     }
-        public boolean addTo(String traceId) {
-            validateRequiredFields();
-            
-            // Create the observation payload using TraceManager's payload builder
-            JsonObject observationBody = traceManager.getPayloadBuilder().buildStructuredLLMGeneration(
-                traceId, model, getInputText(), getOutputText(),
-                getPromptTokens(), getCompletionTokens(), getTotalTokens(),
-                duration, componentName, stage
-            );
-            
-            // Send via TraceManager
-            return traceManager.sendObservation(observationBody);
-        }
-        
-        /**
-         * Builds the GenerationObservation without sending it.
-         * 
-         * @return the built GenerationObservation
-         * @throws IllegalStateException if required fields are missing
-         */
-        public GenerationObservation build() {
-            validateRequiredFields();
-            return new GenerationObservation(this);
-        }
-        
-        /**
-         * Validates that all required fields have been set.
-         * 
-         * @throws IllegalStateException if any required field is missing
-         */
-        private void validateRequiredFields() {
-            if (model == null || model.trim().isEmpty()) {
+
+    @Override
+    public CompletableFuture<Boolean> sendToTrace(String traceId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Validate required fields
+                if (getModel() == null || getModel().trim().isEmpty()) {
                 throw new IllegalStateException("Model is required for generation observation");
             }
-            if (input == null) {
+                if (getInput() == null) {
                 throw new IllegalStateException("Input is required for generation observation");
             }
-            if (output == null) {
+                if (getOutput() == null) {
                 throw new IllegalStateException("Output is required for generation observation");
             }
-            if (usage == null) {
-                throw new IllegalStateException("Usage information is required for generation observation");
-            }
-        }
-        
-        /**
-         * Extracts input text from the input JSON object.
-         */
-        private String getInputText() {
-            if (input.has("text")) {
-                return input.get("text").getAsString();
-            } else if (input.has("user")) {
-                return input.get("user").getAsString();
+                if (totalTokens <= 0) {
+                    throw new IllegalStateException("Token usage information is required for generation observation");
+                }
+                
+                // Build payload for this observation
+                JsonObject observationPayload = buildPayload(traceId);
+                
+                // Create ingestion event
+                JsonObject event = payloadBuilder.buildIngestionEvent("generation-create", observationPayload);
+                JsonObject batchPayload = payloadBuilder.buildIngestionBatch(event);
+                
+                // Send to Langfuse
+                HttpResponse<String> httpResponse = httpClient.post("/api/public/ingestion", batchPayload);
+                
+                if (httpClient.isIngestionSuccessful(httpResponse)) {
+                    System.out.println("GenerationObservation sent successfully: " + getObservationId() + 
+                        " (component: " + componentName + ", tokens: " + totalTokens + ")");
+                    return true;
             } else {
-                return input.toString(); // Fallback to JSON string
+                    System.err.println("Failed to send GenerationObservation. Status: " + 
+                        httpResponse.statusCode() + ", Response: " + httpResponse.body());
+                    return false;
+                }
+            } catch (Exception e) {
+                System.err.println("Error sending GenerationObservation: " + e.getMessage());
+                return false;
             }
-        }
-        
-        /**
-         * Extracts output text from the output JSON object.
-         */
-        private String getOutputText() {
-            if (output.has("text")) {
-                return output.get("text").getAsString();
-            } else {
-                return output.toString(); // Fallback to JSON string
-            }
-        }
-        
-        /**
-         * Gets prompt tokens from usage object.
-         */
-        private int getPromptTokens() {
-            return usage.has("promptTokens") ? usage.get("promptTokens").getAsInt() : 0;
-        }
-        
-        /**
-         * Gets completion tokens from usage object.
-         */
-        private int getCompletionTokens() {
-            return usage.has("completionTokens") ? usage.get("completionTokens").getAsInt() : 0;
-        }
-        
-        /**
-         * Gets total tokens from usage object.
-         */
-        private int getTotalTokens() {
-            return usage.has("totalTokens") ? usage.get("totalTokens").getAsInt() : 
-                   getPromptTokens() + getCompletionTokens();
-        }
+        });
     }
+
+    @Override
+    protected JsonObject buildPayload(String traceId) {
+        // Use the existing payload builder method for structured LLM generation
+        return payloadBuilder.buildStructuredLLMGeneration(
+            traceId, getModel(), prompt, response, 
+            inputTokens, outputTokens, totalTokens, 
+            getDurationMs(), componentName, stage);
+    }
+
+    // Getters for accessing built observation data
+    public String getPrompt() { return prompt; }
+    public String getResponse() { return response; }
+    public int getInputTokens() { return inputTokens; }
+    public int getOutputTokens() { return outputTokens; }
+    public int getTotalTokens() { return totalTokens; }
+    public String getComponentName() { return componentName; }
+    public String getStage() { return stage; }
 }

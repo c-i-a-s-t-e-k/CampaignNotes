@@ -1,14 +1,8 @@
 package CampaignNotes.tracking;
 
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-
 import com.google.gson.JsonObject;
 
-import CampaignNotes.tracking.trace.TraceManager;
-import CampaignNotes.tracking.trace.payload.IngestionPayloadBuilder;
 import model.ModelPricing;
-import model.Note;
 import model.PromptContent;
 
 /**
@@ -20,7 +14,6 @@ import model.PromptContent;
  * - LangfuseHttpClient: HTTP communication
  * - LangfuseModelService: Model pricing and information
  * - LangfusePromptManager: Prompt retrieval and management
- * - TraceManager: AI operations tracking
  * 
  * The facade pattern maintains backward compatibility while providing a clean,
  * modular architecture that follows Single Responsibility Principle.
@@ -38,10 +31,9 @@ import model.PromptContent;
  * String prompt = langfuseClient.getPromptVersionWithVariables("my-prompt", 2, variables);
  * ```
  * 
- * Track embedding operation:
+ * Get prompt content:
  * ```
- * String traceId = langfuseClient.trackNoteProcessingSession("note-processing", campaignId, noteId, userId);
- * langfuseClient.trackEmbedding(traceId, note, "text-embedding-ada-002", campaignId, 150, 500);
+ * PromptContent promptContent = langfuseClient.getPromptContentWithVariables("my-prompt", variables);
  * ```
  */
 public class LangfuseClient {
@@ -51,7 +43,6 @@ public class LangfuseClient {
     private final LangfuseHttpClient httpClient;
     private final LangfuseModelService modelService;
     private final LangfusePromptManager promptManager;
-    private final TraceManager traceManager;
     
     /**
      * Default constructor that initializes all components with default configuration.
@@ -63,9 +54,6 @@ public class LangfuseClient {
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
         
-        // Initialize new tracking components
-        IngestionPayloadBuilder payloadBuilder = new IngestionPayloadBuilder(modelService);
-        this.traceManager = new TraceManager(httpClient, payloadBuilder);
     }
     
     /**
@@ -79,9 +67,6 @@ public class LangfuseClient {
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
         
-        // Initialize new tracking components
-        IngestionPayloadBuilder payloadBuilder = new IngestionPayloadBuilder(modelService);
-        this.traceManager = new TraceManager(httpClient, payloadBuilder);
     }
     
     // === CONNECTION AND CONFIGURATION METHODS ===
@@ -143,175 +128,9 @@ public class LangfuseClient {
     }
     
     // === TRACKING SERVICE DELEGATION ===
-    
-    /**
-     * Tracks an embedding generation call to Langfuse with full note information.
-     * Delegates to TraceManager.
-     * 
-     * @param traceId ID of the parent trace to link this generation to
-     * @param note the full note that was embedded
-     * @param model the embedding model used
-     * @param campaignId the campaign UUID
-     * @param tokensUsed exact number of tokens consumed (from OpenAI API)
-     * @param durationMs time taken in milliseconds
-     * @return true if tracking was successful, false otherwise
-     */
-    public boolean trackEmbedding(String traceId, Note note, String model, String campaignId, 
-                                 int tokensUsed, long durationMs) {
-        return traceManager.trackEmbedding(traceId, note, model, campaignId, tokensUsed, durationMs);
-    }
-    
-    /**
-     * Tracks an embedding generation call to Langfuse with full note information and custom tags.
-     * Delegates to TraceManager.
-     * 
-     * @param traceId ID of the parent trace to link this generation to
-     * @param note the full note that was embedded
-     * @param model the embedding model used
-     * @param campaignId the campaign UUID
-     * @param tokensUsed exact number of tokens consumed (from OpenAI API)
-     * @param durationMs time taken in milliseconds
-     * @param customTags additional custom tags to include
-     * @return true if tracking was successful, false otherwise
-     */
-    public boolean trackEmbedding(String traceId, Note note, String model, String campaignId, 
-                                 int tokensUsed, long durationMs, List<String> customTags) {
-        return traceManager.trackEmbedding(traceId, note, model, campaignId, tokensUsed, durationMs, customTags);
-    }
-    
-    /**
-     * Tracks a note processing session to Langfuse.
-     * Delegates to TraceManager.
-     * 
-     * @param sessionName name of the session (e.g., "note-processing")
-     * @param campaignId the campaign UUID
-     * @param noteId the note ID
-     * @param userId user performing the action (if available)
-     * @return trace ID for linking related generations, or null if failed
-     */
-    public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId) {
-        return traceManager.createTrace(sessionName, campaignId, noteId, userId);
-    }
-    
-    /**
-     * Tracks a note processing session to Langfuse with custom tags.
-     * Delegates to TraceManager.
-     * 
-     * @param sessionName name of the session (e.g., "note-processing")
-     * @param campaignId the campaign UUID
-     * @param noteId the note ID
-     * @param userId user performing the action (if available)
-     * @param customTags additional custom tags to include
-     * @return trace ID for linking related generations, or null if failed
-     */
-    public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId, List<String> customTags) {
-        return traceManager.createTrace(sessionName, campaignId, noteId, userId, customTags, "note-processing");
-    }
-    
-    /**
-     * Tracks an LLM generation to Langfuse for observability.
-     * Delegates to TraceManager.
-     * 
-     * @param traceId the trace ID to associate this generation with
-     * @param model the model used (e.g., "o3-mini")
-     * @param prompt the input prompt sent to the model
-     * @param response the response received from the model
-     * @param tokens number of tokens used
-     * @param duration duration of the operation in milliseconds
-     * @return true if tracked successfully, false otherwise
-     */
-    public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, int tokens, long duration) {
-        // For backward compatibility, estimate input/output split
-        int inputTokens = tokens / 2;
-        int outputTokens = tokens - inputTokens;
-        return traceManager.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, tokens, duration);
-    }
-
-    /**
-     * Tracks an LLM generation with separated input/output tokens.
-     */
-    public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, int inputTokens, int outputTokens, int totalTokens, long duration) {
-        return traceManager.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, totalTokens, duration);
-    }
-    
-    /**
-     * Tracks an LLM generation with component identification (NAE/ARE).
-     * 
-     * @param traceId the trace ID to associate this generation with
-     * @param model the model used (e.g., "o3-mini")
-     * @param prompt the input prompt sent to the model
-     * @param response the response received from the model
-     * @param inputTokens exact input token count
-     * @param outputTokens exact output token count
-     * @param totalTokens exact total token count
-     * @param duration duration of the operation in milliseconds
-     * @param componentName name identifying the component (e.g., "nae-generation", "are-generation")
-     * @param stage processing stage (e.g., "artifact-extraction", "relationship-extraction")
-     * @return true if tracked successfully, false otherwise
-     */
-    public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, 
-                                    int inputTokens, int outputTokens, int totalTokens, long duration,
-                                    String componentName, String stage) {
-        return traceManager.trackLLMGeneration(traceId, model, prompt, response, inputTokens, outputTokens, totalTokens, duration, componentName, stage);
-    }
-    
-    /**
-     * Creates a trace through ingestion API with structured input/output support.
-     * 
-     * @param traceName name of the trace
-     * @param campaignId campaign UUID
-     * @param noteId note ID being processed
-     * @param noteContent full note content for preview generation
-     * @param categories list of available categories
-     * @param workflowType type of workflow (e.g., "ai-powered-extraction")
-     * @return trace ID if successful, null otherwise
-     */
-    public String createTraceWithInput(String traceName, String campaignId, String noteId,
-                                     String noteContent, List<String> categories, String workflowType) {
-        return traceManager.createTraceWithInput(traceName, campaignId, noteId, noteContent, categories, workflowType);
-    }
-    
-    /**
-     * Updates an existing trace with output results.
-     * 
-     * @param traceId the trace ID to update
-     * @param artifactsCount number of artifacts extracted
-     * @param relationshipsCount number of relationships found
-     * @param artifactIds list of artifact IDs created
-     * @param processingStatus final status (success/failure)
-     * @param durationMs total processing duration
-     * @return true if update successful, false otherwise
-     */
-    public boolean updateTraceOutput(String traceId, int artifactsCount, int relationshipsCount,
-                                   List<String> artifactIds, String processingStatus, long durationMs) {
-        return traceManager.updateTraceOutput(traceId, artifactsCount, relationshipsCount, artifactIds, processingStatus, durationMs);
-    }
-    
-    /**
-     * Tracks an artifact extraction workflow session to Langfuse.
-     * Delegates to TraceManager.
-     * 
-     * @param sessionName name of the session (e.g., "artifact-extraction")
-     * @param campaignId the campaign UUID
-     * @param noteId the note ID being processed
-     * @return trace ID for linking related generations, or null if failed
-     */
-    public String trackArtifactExtractionWorkflow(String sessionName, String campaignId, String noteId) {
-        return traceManager.createTrace(sessionName, campaignId, noteId, null, 
-                                      java.util.Arrays.asList("workflow:artifact-extraction"), 
-                                      "artifact-extraction");
-    }
-    
-    /**
-     * Retrieves a trace from Langfuse by its ID asynchronously.
-     * Delegates to TraceManager.
-     * 
-     * @param traceId the ID of the trace to retrieve
-     * @return CompletableFuture containing JsonObject with trace data, or null if not found
-     */
-    public CompletableFuture<JsonObject> getTrace(String traceId) {
-        return traceManager.getTrace(traceId);
-    }
+    // Note: All tracking methods have been removed as they are now handled directly
+    // by TraceManager and Observation classes in the respective service layers.
+    // This provides better separation of concerns and eliminates unnecessary delegation.
     
     // === PROMPT MANAGER DELEGATION ===
     
@@ -599,13 +418,4 @@ public class LangfuseClient {
         return promptManager;
     }
     
-    /**
-     * Gets the underlying trace manager instance.
-     * For advanced usage and testing scenarios.
-     * 
-     * @return the TraceManager instance
-     */
-    public TraceManager getTraceManager() {
-        return traceManager;
-    }
 }
