@@ -3,7 +3,6 @@ package CampaignNotes;
 import java.sql.SQLException;
 import java.util.UUID;
 
-import CampaignNotes.tracking.LangfuseClient;
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -15,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import CampaignNotes.tracking.LangfuseClient;
 import model.Campain;
 import model.Note;
 
@@ -210,52 +210,29 @@ class NoteServiceTest {
         }, "Failed to verify note in Qdrant");
     }
     
-    /**
-     * Verifies that a collection exists and has data
-     */
-    private void verifyCollectionHasData(String collectionName) {
-        assertDoesNotThrow(() -> {
-            // Use CampaignManager to verify collection has data
-            boolean hasNotes = campaignManager.hasExistingNotes(testCampaign);
-            assertTrue(hasNotes, "Collection should contain data points");
-            
-            System.out.println("Collection " + collectionName + " verified through CampaignManager");
-        }, "Failed to verify collection data");
-    }
     
     /**
      * Verifies that a trace was created in Langfuse for the note processing
+     * 
+     * NOTE: This method has been simplified due to architectural changes.
+     * The old trackEmbedding method has been removed as tracking is now handled
+     * directly by TraceManager and Observation classes in service layers.
      */
     private void verifyTraceInLangfuse() {
         try {
             // Wait for Langfuse processing (typically takes 15-30 seconds)
             System.out.println("Waiting for Langfuse trace processing...");
-            Thread.sleep(3000); // 3 seconds - may not be enough for full processing
-            
-            // Note: This is a simplified verification since full Langfuse API integration
-            // would require additional setup. In a real scenario, we would:
-            // 1. Capture the trace ID returned by trackNoteProcessingSession
-            // 2. Query Langfuse API to verify the trace exists
-            // 3. Check trace metadata contains correct campaign and note IDs
+            Thread.sleep(1000); // Reduced wait time since we're only checking connection
             
             // For now, we verify that Langfuse connection works
             assertTrue(langfuseClient.checkConnection(), 
                 "Langfuse connection should be available");
             
-            // Test embedding tracking (which is part of addNote process)
-            boolean embeddingTracked = langfuseClient.trackEmbedding(
-                null, // No specific traceId, let the client handle it
-                testNote,
-                "text-embedding-ada-002", // Default embedding model
-                testCampaignUuid,
-                50, // Estimated tokens
-                1500 // Duration in ms
-            );
+            System.out.println("Successfully verified Langfuse connection functionality");
             
-            assertTrue(embeddingTracked, "Embedding should be tracked in Langfuse");
-            
-            System.out.println("Successfully verified Langfuse trace functionality");
-            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Warning: Langfuse verification interrupted - " + e.getMessage());
         } catch (Exception e) {
             System.err.println("Warning: Langfuse verification failed - " + e.getMessage());
             // Note: In integration tests, Langfuse delays might cause test failures

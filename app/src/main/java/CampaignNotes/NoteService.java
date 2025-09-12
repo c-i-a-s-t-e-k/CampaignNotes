@@ -47,6 +47,11 @@ public class NoteService {
      * Validates the note, generates embedding, stores it, and processes artifacts.
      * For override notes, ensures that there are existing notes to override.
      * 
+     * Implements proper trace lifecycle management following ArtifactGraphService pattern:
+     * 1. TRACE LIFECYCLE START: Create and initialize trace
+     * 2. Process embedding with observation tracking
+     * 3. TRACE LIFECYCLE END: Finalize trace with success/error
+     * 
      * @param note the note to add
      * @param campaign the campaign to add the note to
      * @return true if the note was successfully added, false otherwise
@@ -72,50 +77,61 @@ public class NoteService {
             System.out.println("Override note validation passed: Found existing notes in campaign");
         }
         
-        // Start tracking session using new TraceManager with appropriate TraceType
-        String traceId = null;
-        try {
-            Trace trace = traceManager.createTraceByType(
-                "note-embedding", 
-                campaign.getUuid(), 
-                note.getId(), 
-                null, // userId
-                java.util.Collections.emptyList(), // customTags
-                "embedding-generation", // workflowType
-                TraceType.EMBEDDING_TRACE // Use appropriate enum for embedding operations
-            );
-            trace.initialize().get(); // Wait for initialization
-            traceId = trace.getTraceId();
-        } catch (Exception e) {
-            System.err.println("Error creating trace for embedding: " + e.getMessage());
-        }
-        
+        long startTime = System.currentTimeMillis();
+        Trace trace = null; // Work with Trace object for proper lifecycle management
         
         try {
+            System.out.println("Starting note embedding for note: " + note.getId());
+            
+            // TRACE LIFECYCLE START: Create and initialize trace
+            try {
+                trace = traceManager.createTraceWithInput(
+                    "note-embedding", 
+                    campaign.getUuid(), 
+                    note.getId(),
+                    note.getFullTextForEmbedding(),
+                    java.util.Collections.emptyList(), // No categories for embedding
+                    TraceType.EMBEDDING_TRACE,
+                    null // userId
+                );
+                System.out.println("EmbedingTrace initialized successfully: " + (trace != null ? trace.getTraceId() : "null"));
+            } catch (Exception e) {
+                System.err.println("Error creating trace: " + e.getMessage());
+                trace = null;
+            }
+            
+            if (trace == null) {
+                System.err.println("Warning: Failed to create trace, continuing without tracking");
+            }
+            
             // Generate embedding with exact token usage
-            long startTime = System.currentTimeMillis();
             String textForEmbedding = note.getFullTextForEmbedding();
             
             // Use new method that returns both embedding and exact token count
             EmbeddingResult embeddingResult = 
                 embeddingService.generateEmbeddingWithUsage(textForEmbedding);
             
-            // Track embedding generation using direct observation creation
-            try {
-                EmbedingObservation observation = new EmbedingObservation(
-                    "note-embedding", 
-                    traceManager.getHttpClient(), 
-                    traceManager.getPayloadBuilder()
-                )
-                    .withNote(note)
-                    .withCampaignId(campaign.getUuid())
-                    .withModel(embeddingService.getEmbeddingModel())
-                    .withTokenUsage(embeddingResult.getTokensUsed())
-                    .finalizeForSending();
-                
-                observation.sendToTrace(traceId).get(); // Wait for completion
-            } catch (Exception e) {
-                System.err.println("Error tracking embedding: " + e.getMessage());
+            // TRACE LIFECYCLE: Add embedding observation to trace
+            if (trace != null) {
+                try {
+                    EmbedingObservation observation = new EmbedingObservation(
+                        "note-embedding", 
+                        traceManager.getHttpClient(), 
+                        traceManager.getPayloadBuilder()
+                    )
+                        .withNote(note)
+                        .withCampaignId(campaign.getUuid())
+                        .withModel(embeddingService.getEmbeddingModel())
+                        .withTokenUsage(embeddingResult.getTokensUsed())
+                        .finalizeForSending();
+                    
+                    // Add observation to trace (proper trace lifecycle)
+                    traceManager.trackNewObservation(trace, observation);
+                    System.out.println("EmbedingObservation sent successfully: " + observation.getObservationId() + 
+                        " (tokens: " + embeddingResult.getTokensUsed() + ")");
+                } catch (Exception e) {
+                    System.err.println("Error tracking embedding observation: " + e.getMessage());
+                }
             }
             
             // Delegate storage to CampaignManager
@@ -144,15 +160,86 @@ public class NoteService {
                     // Continue - artifact processing is supplementary to note storage
                 }
                 
+                long totalDuration = System.currentTimeMillis() - startTime;
+                
+                // TRACE LIFECYCLE END: Finalize trace with successful results
+                finalizeTraceWithSuccess(trace, embeddingResult.getTokensUsed(), totalDuration, 
+                    embeddingResult.getEmbedding().size(), stored);
+                
                 return true;
             } else {
+                // TRACE LIFECYCLE END: Finalize trace with failure
+                finalizeTraceWithError(trace, "Failed to store note in campaign", startTime);
+                
                 System.err.println("Failed to store note in campaign");
                 return false;
             }
             
         } catch (Exception e) {
-            System.err.println("Error adding note: " + e.getMessage());
+            String errorMessage = "Error adding note: " + e.getMessage();
+            System.err.println(errorMessage);
+            System.err.println("Exception details: " + e.getClass().getSimpleName());
+            
+            // TRACE LIFECYCLE END: Finalize trace with exception error
+            finalizeTraceWithError(trace, e.getMessage(), startTime);
+            
             return false;
+        }
+    }
+    
+    /**
+     * Finalizes trace with successful results (proper trace lifecycle completion).
+     * 
+     * @param trace the trace to finalize
+     * @param tokensUsed tokens used for embedding generation
+     * @param totalDuration total processing duration
+     * @param embeddingSize size of generated embedding vector
+     * @param stored whether note was successfully stored
+     */
+    private void finalizeTraceWithSuccess(Trace trace, int tokensUsed, long totalDuration, 
+                                         int embeddingSize, boolean stored) {
+        if (trace != null && !trace.isFinalized()) {
+            try {
+                // Use TraceManager's updateTraceOutput method for proper lifecycle
+                java.util.List<String> outputMetadata = java.util.Arrays.asList(
+                    "embedding_size:" + embeddingSize,
+                    "tokens_used:" + tokensUsed,
+                    "storage_status:" + (stored ? "success" : "failed")
+                );
+                
+                traceManager.updateTraceOutput(trace, 1, 0, // 1 embedding generated, 0 relationships 
+                    outputMetadata, "success", totalDuration).join(); // Wait for completion
+                
+                System.out.println("EmbedingTrace finalized successfully: " + trace.getTraceId() + 
+                    " (tokens: " + tokensUsed + ", duration: " + totalDuration + "ms)");
+                
+            } catch (Exception e) {
+                System.err.println("Error finalizing trace with success: " + e.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * Finalizes trace with error (proper trace lifecycle completion on failure).
+     * 
+     * @param trace the trace to finalize
+     * @param errorMessage error message
+     * @param startTime workflow start time
+     */
+    private void finalizeTraceWithError(Trace trace, String errorMessage, long startTime) {
+        if (trace != null && !trace.isFinalized()) {
+            try {
+                long totalDuration = System.currentTimeMillis() - startTime;
+                
+                // Use TraceManager's updateTraceOutput method for proper lifecycle
+                traceManager.updateTraceOutput(trace, 0, 0, 
+                    java.util.Collections.emptyList(), "error: " + errorMessage, totalDuration).join();
+                
+                System.err.println("EmbedingTrace finalized with error: " + trace.getTraceId() + " - " + errorMessage);
+                
+            } catch (Exception e) {
+                System.err.println("Error finalizing trace with error: " + e.getMessage());
+            }
         }
     }
     
