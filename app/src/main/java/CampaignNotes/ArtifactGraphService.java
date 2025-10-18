@@ -90,7 +90,8 @@ public class ArtifactGraphService {
             "artifact-extraction",
             campaign.getUuid(),
             note.getId(),
-            null // userId
+            null, // userId
+            note.toString() // input
         )) {
             trace.addEvent("artifact_processing_started");
             
@@ -148,6 +149,7 @@ public class ArtifactGraphService {
                 trace.setAttribute("total.duration_ms", totalDuration);
                 trace.setAttribute("save.status", "success");
                 trace.setStatus(true, "Artifact extraction completed successfully");
+                trace.close(gson.toJson(artifacts) + "\n" + gson.toJson(relationships));
                 
                 // Calculate total tokens (rough estimation)
                 int totalTokens = artifacts.size() * 100 + relationships.size() * 150;
@@ -157,6 +159,7 @@ public class ArtifactGraphService {
             } else {
                 trace.setAttribute("save.status", "failed");
                 trace.setStatus(false, "Failed to save artifacts to Neo4j");
+                trace.close();
                 
                 return new ArtifactProcessingResult("Failed to save artifacts to Neo4j", 
                                                    note.getId(), campaign.getUuid());

@@ -31,7 +31,8 @@ class OpenTelemetryIntegrationTest {
             "integration-test",
             "test-campaign-uuid",
             "test-note-id",
-            null
+            null,
+            "test1-input"
         )) {
             trace.setAttribute("test.attribute", "test-value");
             trace.addEvent("test-event");
@@ -56,7 +57,8 @@ class OpenTelemetryIntegrationTest {
             "parent-trace",
             "campaign-id",
             "note-id",
-            null
+            null,
+            "test2-input"
         )) {
             trace.setAttribute("workflow", "test-workflow");
             
@@ -90,7 +92,8 @@ class OpenTelemetryIntegrationTest {
             "embedding-test",
             "campaign-id",
             "note-id",
-            null
+            null,
+            "test3-input"
         )) {
             // Create a mock note for testing
             model.Note testNote = new model.Note(
@@ -127,7 +130,8 @@ class OpenTelemetryIntegrationTest {
             "error-test",
             "campaign-id",
             "note-id",
-            null
+            null,
+            "test4-input"
         )) {
             try {
                 // Simulate an error
@@ -150,7 +154,8 @@ class OpenTelemetryIntegrationTest {
             "full-trace-test",
             "test-campaign-uuid",
             "test-note-id",
-            "test-user-id"
+            "test-user-id",
+            "test5-input"
         )) {
             // Set various attributes
             trace.setAttribute("string.attribute", "value");

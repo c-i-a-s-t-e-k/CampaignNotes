@@ -1,7 +1,10 @@
 package CampaignNotes.tracking.otel;
 
 import java.util.Base64;
+import java.util.Collection;
 import java.util.concurrent.TimeUnit;
+
+import javax.annotation.Nonnull;
 
 import io.github.cdimascio.dotenv.Dotenv;
 import io.opentelemetry.api.OpenTelemetry;
@@ -11,9 +14,12 @@ import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import io.opentelemetry.exporter.otlp.http.trace.OtlpHttpSpanExporter;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.data.SpanData;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
+import io.opentelemetry.sdk.trace.export.SpanExporter;
 import io.opentelemetry.semconv.ResourceAttributes;
 
 /**
@@ -22,7 +28,7 @@ import io.opentelemetry.semconv.ResourceAttributes;
  * This class initializes OpenTelemetry SDK with OTLP exporter configured
  * to send traces to Langfuse OTel endpoint. It handles:
  * - Loading configuration from environment variables
- * - Setting up OTLP gRPC exporter with authentication
+ * - Setting up OTLP HTTP exporter with authentication
  * - Configuring batch span processor for optimal performance
  * - Registering shutdown hooks for graceful cleanup
  * 
@@ -64,8 +70,8 @@ public class OpenTelemetryConfig {
             throw new IllegalStateException("LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY must be set");
         }
         
-        // OTel endpoint for Langfuse
-        String otlpEndpoint = langfuseHost + "/api/public/otel";
+        // OTel endpoint for Langfuse (full path required - Java SDK doesn't append /v1/traces automatically)
+        String otlpEndpoint = langfuseHost + "/api/public/otel/v1/traces";
         
         // Basic Auth header
         String credentials = publicKey + ":" + secretKey;
@@ -79,11 +85,14 @@ public class OpenTelemetryConfig {
                 .build()));
         
         // OTLP Exporter with authentication (HTTP/protobuf for Langfuse)
-        OtlpHttpSpanExporter spanExporter = OtlpHttpSpanExporter.builder()
+        OtlpHttpSpanExporter baseExporter = OtlpHttpSpanExporter.builder()
             .setEndpoint(otlpEndpoint)
             .addHeader("Authorization", authHeader)
             .setTimeout(30, TimeUnit.SECONDS)
             .build();
+        
+        // Wrap exporter with logging to capture export failures
+        SpanExporter spanExporter = new LoggingSpanExporterWrapper(baseExporter);
         
         // Batch Span Processor - handles batching and retry
         BatchSpanProcessor spanProcessor = BatchSpanProcessor.builder(spanExporter)
@@ -138,5 +147,81 @@ public class OpenTelemetryConfig {
             throw new IllegalStateException("OpenTelemetry not initialized. Call initialize() first.");
         }
         return openTelemetry;
+    }
+    
+    /**
+     * Wrapper around SpanExporter that logs export failures to System.err.
+     * This helps diagnose issues with trace export to Langfuse.
+     */
+    private static class LoggingSpanExporterWrapper implements SpanExporter {
+        
+        private final SpanExporter delegate;
+        private long totalExports = 0;
+        private long failedExports = 0;
+        
+        public LoggingSpanExporterWrapper(SpanExporter delegate) {
+            this.delegate = delegate;
+        }
+        
+        @Override
+        public CompletableResultCode export(@Nonnull Collection<SpanData> spans) {
+            totalExports++;
+            CompletableResultCode result = delegate.export(spans);
+            
+            // Add callback to log failures
+            result.whenComplete(() -> {
+                if (!result.isSuccess()) {
+                    failedExports++;
+                    System.err.println(String.format(
+                        "[ERROR] Failed to export %d spans to Langfuse (total failures: %d/%d)",
+                        spans.size(),
+                        failedExports,
+                        totalExports
+                    ));
+                    
+                    // Log first span ID for debugging
+                    if (!spans.isEmpty()) {
+                        SpanData firstSpan = spans.iterator().next();
+                        System.err.println(String.format(
+                            "[ERROR] First failed span - Trace ID: %s, Span ID: %s, Name: %s",
+                            firstSpan.getTraceId(),
+                            firstSpan.getSpanId(),
+                            firstSpan.getName()
+                        ));
+                    }
+                }
+            });
+            
+            return result;
+        }
+        
+        @Override
+        public CompletableResultCode flush() {
+            CompletableResultCode result = delegate.flush();
+            result.whenComplete(() -> {
+                if (!result.isSuccess()) {
+                    System.err.println("[ERROR] Failed to flush spans to Langfuse");
+                }
+            });
+            return result;
+        }
+        
+        @Override
+        public CompletableResultCode shutdown() {
+            if (totalExports > 0) {
+                System.err.println(String.format(
+                    "[INFO] OTel exporter shutting down - Total exports: %d, Failed: %d (%.1f%%)",
+                    totalExports,
+                    failedExports,
+                    (failedExports * 100.0 / totalExports)
+                ));
+            }
+            return delegate.shutdown();
+        }
+        
+        @Override
+        public void close() {
+            delegate.close();
+        }
     }
 }

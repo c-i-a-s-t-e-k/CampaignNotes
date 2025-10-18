@@ -74,7 +74,8 @@ public class NoteService {
             "note-embedding",
             campaign.getUuid(),
             note.getId(),
-            null // userId
+            null, // userId
+            note.toString() // input
         )) {
             trace.addEvent("embedding_started");
             

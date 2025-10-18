@@ -24,7 +24,7 @@ import io.opentelemetry.context.Context;
  * Usage:
  * <pre>
  * OTelTraceManager traceManager = new OTelTraceManager();
- * try (OTelTrace trace = traceManager.createTrace("note-embedding", campaignId, noteId, userId)) {
+ * try (OTelTrace trace = traceManager.createTrace("note-embedding", campaignId, noteId, userId, input)) {
  *     // Your workflow logic here
  *     trace.setAttribute("custom.attribute", "value");
  *     trace.setStatus(true, "Completed successfully");
@@ -53,7 +53,7 @@ public class OTelTraceManager {
      * @param userId user ID (optional, can be null)
      * @return OTelTrace wrapper that should be used with try-with-resources
      */
-    public OTelTrace createTrace(String traceName, String campaignId, String noteId, String userId) {
+    public OTelTrace createTrace(String traceName, String campaignId, String noteId, String userId, String input){
         Span span = tracer.spanBuilder(traceName)
             .setSpanKind(SpanKind.INTERNAL)
             .setAttribute("campaign.id", campaignId)
@@ -61,6 +61,7 @@ public class OTelTraceManager {
             .setAttribute("system", "campaign-notes")
             .setAttribute("langfuse.trace.name", traceName)
             .setAttribute("langfuse.version", OpenTelemetryConfig.SERVICE_VERSION)
+            .setAttribute("input", input)
             .startSpan();
         
         if (userId != null) {
@@ -235,12 +236,18 @@ public class OTelTraceManager {
             return span.getSpanContext().getTraceId();
         }
         
+
+        public void close(String output) {
+            span.setAttribute("output", output);
+            span.end();
+        }
         /**
          * Ends the span and exports it.
          * Automatically called when used with try-with-resources.
          */
         @Override
         public void close() {
+            span.setAttribute("output", null);
             span.end();
         }
     }
