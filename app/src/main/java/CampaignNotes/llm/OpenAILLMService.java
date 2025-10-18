@@ -114,9 +114,6 @@ public class OpenAILLMService {
             lastResponse = generateWithModel(model, systemPrompt, inputPrompt);
             
             if (lastResponse.isSuccessful()) {
-                if (attempt > 1) {
-                    System.out.println("LLM generation successful on attempt " + attempt);
-                }
                 return lastResponse;
             }
             
@@ -212,9 +209,6 @@ public class OpenAILLMService {
                     }
                 }
                 
-                System.out.println("OpenAI " + model + " generation successful. Tokens: " + totalTokens + 
-                                 ", Duration: " + duration + "ms");
-                
                 if (promptTokens > 0 || completionTokens > 0) {
                     return new LLMResponse(content, promptTokens, completionTokens, model, duration);
                 }
@@ -258,7 +252,6 @@ public class OpenAILLMService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                System.out.println("OpenAI API is available");
                 return true;
             } else {
                 System.err.println("OpenAI API check failed. Status: " + response.statusCode());

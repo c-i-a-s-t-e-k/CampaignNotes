@@ -42,8 +42,23 @@ dependencies {
     // OpenAI Java SDK - official OpenAI SDK for Java
     implementation 'com.openai:openai-java:2.8.1'
     
-    // Gson for JSON parsing - kept for existing code compatibility
+    // Gson for JSON parsing - kept for existing code compatibility (used by LangfusePromptManager)
     implementation 'com.google.code.gson:gson:2.10.1'
+    
+    // OpenTelemetry Core
+    implementation 'io.opentelemetry:opentelemetry-api:1.40.0'
+    implementation 'io.opentelemetry:opentelemetry-sdk:1.40.0'
+    
+    // OpenTelemetry OTLP Exporter (HTTP/protobuf dla Langfuse)
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.40.0'
+    
+    // OpenTelemetry Semantic Conventions
+    implementation 'io.opentelemetry.semconv:opentelemetry-semconv:1.25.0-alpha'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
 
 application {

@@ -60,7 +60,6 @@ public class DataBaseLoader {
             try {
                 neo4jDriver = GraphDatabase.driver(dbUri, AuthTokens.basic(dbUser, dbPassword));
                 neo4jDriver.verifyConnectivity();
-                System.out.println("Neo4j driver initialized successfully");
             } catch (Exception e) {
                 System.err.println("Failed to initialize Neo4j driver: " + e.getMessage());
                 return null;
@@ -87,7 +86,6 @@ public class DataBaseLoader {
                 int qdrantPort = Integer.parseInt(qdrantPortStr);
                 qdrantClient = new QdrantClient(
                         QdrantGrpcClient.newBuilder(qdrantUrl, qdrantPort, false).build());
-                System.out.println("Qdrant client initialized successfully");
             } catch (Exception e) {
                 System.err.println("Failed to initialize Qdrant client: " + e.getMessage());
                 return null;
@@ -115,7 +113,6 @@ public class DataBaseLoader {
             Driver driver = getNeo4jDriver();
             if (driver != null) {
                 driver.verifyConnectivity();
-                System.out.println("Neo4j database is available");
                 return true;
             }
             return false;
@@ -142,7 +139,6 @@ public class DataBaseLoader {
                 // Wait for the result with a timeout (5 seconds)
                 future.get(5, java.util.concurrent.TimeUnit.SECONDS);
                 
-                System.out.println("Qdrant database is available");
                 return true;
             }
             return false;
@@ -159,14 +155,12 @@ public class DataBaseLoader {
         if (neo4jDriver != null) {
             try {
                 neo4jDriver.close();
-                System.out.println("Neo4j connection closed");
             } catch (Exception e) {
                 System.err.println("Error closing Neo4j connection: " + e.getMessage());
             }
         }
         if (qdrantClient != null) {
             qdrantClient.close();
-            System.out.println("Qdrant database closed");
         }
     }
     
@@ -186,8 +180,6 @@ public class DataBaseLoader {
                 String uuid = rs.getString("uuid");
                 campaignIds.add(uuid);
             }
-            
-            System.out.println("Loaded " + campaignIds.size() + " campaign UUIDs from the database");
             
         } catch (SQLException e) {
             System.err.println("Error loading campaign IDs from database: " + e.getMessage());
@@ -402,7 +394,6 @@ public class DataBaseLoader {
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
              PreparedStatement pstmt = conn.prepareStatement(createUsers)) {
             pstmt.execute();
-            System.out.println("Users table ensured");
         } catch (SQLException e) {
             System.err.println("Error creating users table: " + e.getMessage());
         }
@@ -431,7 +422,6 @@ public class DataBaseLoader {
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
              PreparedStatement pstmt = conn.prepareStatement(createCampains)) {
             pstmt.execute();
-            System.out.println("Campains table ensured");
         } catch (SQLException e) {
             System.err.println("Error creating campains table: " + e.getMessage());
         }
@@ -473,13 +463,11 @@ public class DataBaseLoader {
             // Create artifact_categories table
             try (PreparedStatement pstmt = conn.prepareStatement(createArtifactCategories)) {
                 pstmt.execute();
-                System.out.println("Artifact categories table ensured");
             }
             
             // Create artifact_categories_to_campaigns table
             try (PreparedStatement pstmt = conn.prepareStatement(createCampaignCategories)) {
                 pstmt.execute();
-                System.out.println("Campaign-categories mapping table ensured");
             }
             
         } catch (SQLException e) {
@@ -512,10 +500,6 @@ public class DataBaseLoader {
                 if (affected > 0) {
                     insertedCount++;
                 }
-            }
-            
-            if (insertedCount > 0) {
-                System.out.println("Inserted " + insertedCount + " default artifact categories");
             }
             
         } catch (SQLException e) {
@@ -551,10 +535,7 @@ public class DataBaseLoader {
                         insertStmt.setLong(5, currentTime);
                         insertStmt.setBoolean(6, true);
                         
-                        int affected = insertStmt.executeUpdate();
-                        if (affected > 0) {
-                            System.out.println("Created default user for migration purposes");
-                        }
+                        insertStmt.executeUpdate();
                     }
                 }
             }

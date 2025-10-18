@@ -51,11 +51,9 @@ public class SqliteRepository {
             }
             try (PreparedStatement pstmt = conn.prepareStatement(createArtifactCategories)) {
                 pstmt.execute();
-                System.out.println("Artifact categories table ensured");
             }
             try (PreparedStatement pstmt = conn.prepareStatement(createCampaignCategories)) {
                 pstmt.execute();
-                System.out.println("Campaign-categories mapping table ensured");
             }
         } catch (SQLException e) {
             System.err.println("Error creating artifact tables: " + e.getMessage());
@@ -83,9 +81,6 @@ public class SqliteRepository {
                     insertedCount++;
                 }
             }
-            if (insertedCount > 0) {
-                System.out.println("Inserted " + insertedCount + " default artifact categories");
-            }
         } catch (SQLException e) {
             System.err.println("Error inserting default artifact categories: " + e.getMessage());
         }
@@ -102,7 +97,6 @@ public class SqliteRepository {
                 String uuid = rs.getString("uuid");
                 campaignIds.add(uuid);
             }
-            System.out.println("Loaded " + campaignIds.size() + " campaign UUIDs from the database");
         } catch (SQLException e) {
             System.err.println("Error loading campaign IDs from database: " + e.getMessage());
         }

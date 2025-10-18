@@ -40,7 +40,7 @@ public class LangfuseClient {
     
     // Core service components
     private final LangfuseConfig config;
-    private final LangfuseHttpClient httpClient;
+    private final LangfuseBasicHttpClient httpClient;
     private final LangfuseModelService modelService;
     private final LangfusePromptManager promptManager;
     
@@ -50,7 +50,7 @@ public class LangfuseClient {
      */
     public LangfuseClient() {
         this.config = new LangfuseConfig();
-        this.httpClient = new LangfuseHttpClient(config);
+        this.httpClient = new LangfuseBasicHttpClient(config);
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
         
@@ -63,7 +63,7 @@ public class LangfuseClient {
      */
     public LangfuseClient(LangfuseConfig config) {
         this.config = config;
-        this.httpClient = new LangfuseHttpClient(config);
+        this.httpClient = new LangfuseBasicHttpClient(config);
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
         
@@ -82,7 +82,6 @@ public class LangfuseClient {
             var response = httpClient.get("/api/public/health");
             
             if (httpClient.isSuccessful(response)) {
-                System.out.println("Langfuse connection successful. Status: " + response.statusCode());
                 return true;
             } else {
                 System.err.println("Langfuse connection failed. Status: " + response.statusCode() + 
@@ -392,9 +391,9 @@ public class LangfuseClient {
      * Gets the underlying HTTP client instance.
      * For advanced usage and testing scenarios.
      * 
-     * @return the LangfuseHttpClient instance
+     * @return the LangfuseBasicHttpClient instance
      */
-    public LangfuseHttpClient getHttpClient() {
+    public LangfuseBasicHttpClient getHttpClient() {
         return httpClient;
     }
     

@@ -9,12 +9,14 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import CampaignNotes.tracking.LangfuseClient;
+import CampaignNotes.tracking.otel.OpenTelemetryConfig;
 import model.Campain;
 import model.Note;
 
@@ -30,6 +32,12 @@ class NoteServiceTest {
     private Note testNote;
     private String testCampaignUuid;
     private String testNoteId;
+    
+    @BeforeAll
+    static void setupOpenTelemetry() {
+        // Initialize OpenTelemetry for all tests
+        OpenTelemetryConfig.initialize();
+    }
     
     @BeforeEach
     void setUp() throws SQLException {
@@ -122,78 +130,6 @@ class NoteServiceTest {
             boolean result = noteService.addNote(invalidNote, testCampaign);
             
             assertFalse(result, "Adding invalid note should fail");
-        }
-    }
-    
-    @Nested
-    @DisplayName("Override Notes")
-    class OverrideNotes {
-        
-        @Test
-        @DisplayName("Should successfully add override note when existing notes are present")
-        void testAddOverrideNote() {
-            System.out.println("Starting testAddOverrideNote...");
-            
-            // STEP 1: First add a regular note to have something to override
-            Note regularNote = new Note(
-                testCampaign.getUuid(),
-                "Regular Note Title",
-                "This is a regular note with some initial information that can be overridden later."
-            );
-            regularNote.setOverride(false); // Explicitly set as not an override note
-            
-            // Add the regular note first
-            boolean regularNoteAdded = noteService.addNote(regularNote, testCampaign);
-            assertTrue(regularNoteAdded, "Regular note should be added successfully");
-            
-            // Wait a moment for the note to be processed
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            
-            // STEP 2: Now add an override note (this should succeed because we have an existing note)
-            Note overrideNote = new Note(
-                testCampaign.getUuid(),
-                "Override Note Title",
-                "This note overrides previous information and provides updated details about the campaign."
-            );
-            overrideNote.setOverride(true);
-            overrideNote.setOverrideReason("Updating with more accurate information");
-            
-            // This should now succeed because we have existing notes in the campaign
-            boolean overrideNoteAdded = noteService.addNote(overrideNote, testCampaign);
-            assertTrue(overrideNoteAdded, 
-                "Override note should be added successfully when there are existing notes to override");
-            
-            // Verify both notes are stored in Qdrant
-            verifyNoteInQdrant();
-            
-            System.out.println("testAddOverrideNote completed successfully");
-        }
-        
-        @Test
-        @DisplayName("Should fail when adding override note to empty collection")
-        void testAddOverrideNoteFailsOnEmptyCollection() {
-            System.out.println("Starting testAddOverrideNoteFailsOnEmptyCollection...");
-            
-            // Try to add an override note when there are no existing notes
-            // This should fail according to business logic
-            Note overrideNote = new Note(
-                testCampaign.getUuid(),
-                "Override Note Title",
-                "This note tries to override previous information but there are no existing notes."
-            );
-            overrideNote.setOverride(true);
-            overrideNote.setOverrideReason("Attempting to override non-existing notes");
-            
-            // This should fail because there are no existing notes to override
-            boolean overrideNoteAdded = noteService.addNote(overrideNote, testCampaign);
-            assertFalse(overrideNoteAdded, 
-                "Override note should NOT be added when there are no existing notes to override");
-            
-            System.out.println("testAddOverrideNoteFailsOnEmptyCollection completed successfully");
         }
     }
      

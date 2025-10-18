@@ -40,7 +40,7 @@ import model.PromptContent;
  */
 public class LangfusePromptManager {
     
-    private final LangfuseHttpClient httpClient;
+    private final LangfuseBasicHttpClient httpClient;
     
     // Cache for prompts to improve performance and reduce API calls
     private final ConcurrentHashMap<String, CachedPrompt> promptCache = new ConcurrentHashMap<>();
@@ -79,7 +79,7 @@ public class LangfusePromptManager {
      * 
      * @param httpClient the HTTP client for API communication
      */
-    public LangfusePromptManager(LangfuseHttpClient httpClient) {
+    public LangfusePromptManager(LangfuseBasicHttpClient httpClient) {
         this.httpClient = httpClient;
     }
     
@@ -225,15 +225,12 @@ public class LangfusePromptManager {
             return;
         }
         
-        System.out.println("Pre-loading " + promptNames.size() + " prompts into cache...");
-        
         for (String promptName : promptNames) {
             try {
                 JsonObject promptData = fetchPromptFromAPI(promptName, version, label, DEFAULT_MAX_RETRIES);
                 if (promptData != null) {
                     String cacheKey = buildCacheKey(promptName, version, label);
                     promptCache.put(cacheKey, new CachedPrompt(promptData, DEFAULT_CACHE_TTL_MS));
-                    System.out.println("Pre-loaded prompt: " + promptName);
                 } else {
                     System.err.println("Failed to pre-load prompt: " + promptName);
                 }
@@ -241,8 +238,6 @@ public class LangfusePromptManager {
                 System.err.println("Error pre-loading prompt " + promptName + ": " + e.getMessage());
             }
         }
-        
-        System.out.println("Pre-loading completed. Cache size: " + promptCache.size());
     }
     
     /**
@@ -277,7 +272,6 @@ public class LangfusePromptManager {
      */
     public void clearPromptCache() {
         promptCache.clear();
-        System.out.println("Prompt cache cleared");
     }
     
     /**
@@ -359,11 +353,6 @@ public class LangfusePromptManager {
             
             // Interpolate variables
             PromptContent interpolatedContent = interpolateVariablesInContent(promptContent, variables);
-            
-            System.out.println("Successfully retrieved and processed prompt: " + promptName + 
-                              (version != null ? " (version " + version + ")" : "") +
-                              (label != null ? " (label " + label + ")" : "") +
-                              " [Type: " + interpolatedContent.getType() + "]");
             
             return interpolatedContent;
             
@@ -500,7 +489,6 @@ public class LangfusePromptManager {
         CachedPrompt cached = promptCache.get(cacheKey);
         if (cached != null) {
             if (!cached.isExpired()) {
-                System.out.println("Using cached prompt: " + cacheKey);
                 return cached.getPromptContent();
             } else {
                 // Remove expired entry
@@ -538,7 +526,6 @@ public class LangfusePromptManager {
             
             // Use retry mechanism from HTTP client
             HttpResponse<String> response = httpClient.getWithRetry(promptEndpoint, maxRetries);
-            System.out.println("Response: " + response.body());
             
             if (httpClient.isSuccessful(response)) {
                 return httpClient.parseJsonResponse(response);
@@ -605,11 +592,6 @@ public class LangfusePromptManager {
             
             // Replace all occurrences of the placeholder
             result = result.replace(placeholder, value);
-        }
-        
-        // Check for unresolved variables (optional warning)
-        if (result.contains("{{") && result.contains("}}")) {
-            System.out.println("Warning: Unresolved variables found in prompt content");
         }
         
         return result;
