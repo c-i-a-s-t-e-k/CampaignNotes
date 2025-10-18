@@ -22,7 +22,7 @@ import model.ModelPricing;
  */
 public class LangfuseModelService {
     
-    private final LangfuseHttpClient httpClient;
+    private final LangfuseBasicHttpClient httpClient;
     
     // Cache for model pricing to reduce API calls
     private final ConcurrentHashMap<String, CachedModelPricing> pricingCache = new ConcurrentHashMap<>();
@@ -56,7 +56,7 @@ public class LangfuseModelService {
      * 
      * @param httpClient the HTTP client for API communication
      */
-    public LangfuseModelService(LangfuseHttpClient httpClient) {
+    public LangfuseModelService(LangfuseBasicHttpClient httpClient) {
         this.httpClient = httpClient;
     }
     
@@ -144,7 +144,6 @@ public class LangfuseModelService {
         CachedModelPricing cached = pricingCache.get(modelName);
         if (cached != null) {
             if (!cached.isExpired()) {
-                System.out.println("Using cached model pricing: " + modelName);
                 return cached.getPricing();
             } else {
                 // Remove expired entry
@@ -273,22 +272,16 @@ public class LangfuseModelService {
             return;
         }
         
-        System.out.println("Pre-loading pricing for " + modelNames.size() + " models...");
-        
         for (String modelName : modelNames) {
             try {
                 ModelPricing pricing = getModelPricing(modelName, DEFAULT_CACHE_TTL_MS);
-                if (pricing != null) {
-                    System.out.println("Pre-loaded pricing for model: " + modelName);
-                } else {
+                if (pricing == null) {
                     System.err.println("Failed to pre-load pricing for model: " + modelName);
                 }
             } catch (Exception e) {
                 System.err.println("Error pre-loading pricing for model " + modelName + ": " + e.getMessage());
             }
         }
-        
-        System.out.println("Pre-loading completed. Cache size: " + pricingCache.size());
     }
     
     /**
@@ -296,7 +289,6 @@ public class LangfuseModelService {
      */
     public void clearPricingCache() {
         pricingCache.clear();
-        System.out.println("Model pricing cache cleared");
     }
     
     /**

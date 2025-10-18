@@ -1,12 +1,8 @@
 package CampaignNotes.tracking;
 
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-
 import com.google.gson.JsonObject;
 
 import model.ModelPricing;
-import model.Note;
 import model.PromptContent;
 
 /**
@@ -18,7 +14,6 @@ import model.PromptContent;
  * - LangfuseHttpClient: HTTP communication
  * - LangfuseModelService: Model pricing and information
  * - LangfusePromptManager: Prompt retrieval and management
- * - LangfuseTracker: AI operations tracking
  * 
  * The facade pattern maintains backward compatibility while providing a clean,
  * modular architecture that follows Single Responsibility Principle.
@@ -36,20 +31,18 @@ import model.PromptContent;
  * String prompt = langfuseClient.getPromptVersionWithVariables("my-prompt", 2, variables);
  * ```
  * 
- * Track embedding operation:
+ * Get prompt content:
  * ```
- * String traceId = langfuseClient.trackNoteProcessingSession("note-processing", campaignId, noteId, userId);
- * langfuseClient.trackEmbedding(traceId, note, "text-embedding-ada-002", campaignId, 150, 500);
+ * PromptContent promptContent = langfuseClient.getPromptContentWithVariables("my-prompt", variables);
  * ```
  */
 public class LangfuseClient {
     
     // Core service components
     private final LangfuseConfig config;
-    private final LangfuseHttpClient httpClient;
+    private final LangfuseBasicHttpClient httpClient;
     private final LangfuseModelService modelService;
     private final LangfusePromptManager promptManager;
-    private final LangfuseTracker tracker;
     
     /**
      * Default constructor that initializes all components with default configuration.
@@ -57,10 +50,10 @@ public class LangfuseClient {
      */
     public LangfuseClient() {
         this.config = new LangfuseConfig();
-        this.httpClient = new LangfuseHttpClient(config);
+        this.httpClient = new LangfuseBasicHttpClient(config);
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
-        this.tracker = new LangfuseTracker(httpClient, modelService);
+        
     }
     
     /**
@@ -70,10 +63,10 @@ public class LangfuseClient {
      */
     public LangfuseClient(LangfuseConfig config) {
         this.config = config;
-        this.httpClient = new LangfuseHttpClient(config);
+        this.httpClient = new LangfuseBasicHttpClient(config);
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
-        this.tracker = new LangfuseTracker(httpClient, modelService);
+        
     }
     
     // === CONNECTION AND CONFIGURATION METHODS ===
@@ -89,7 +82,6 @@ public class LangfuseClient {
             var response = httpClient.get("/api/public/health");
             
             if (httpClient.isSuccessful(response)) {
-                System.out.println("Langfuse connection successful. Status: " + response.statusCode());
                 return true;
             } else {
                 System.err.println("Langfuse connection failed. Status: " + response.statusCode() + 
@@ -135,110 +127,9 @@ public class LangfuseClient {
     }
     
     // === TRACKING SERVICE DELEGATION ===
-    
-    /**
-     * Tracks an embedding generation call to Langfuse with full note information.
-     * Delegates to LangfuseTracker.
-     * 
-     * @param traceId ID of the parent trace to link this generation to
-     * @param note the full note that was embedded
-     * @param model the embedding model used
-     * @param campaignId the campaign UUID
-     * @param tokensUsed exact number of tokens consumed (from OpenAI API)
-     * @param durationMs time taken in milliseconds
-     * @return true if tracking was successful, false otherwise
-     */
-    public boolean trackEmbedding(String traceId, Note note, String model, String campaignId, 
-                                 int tokensUsed, long durationMs) {
-        return tracker.trackEmbedding(traceId, note, model, campaignId, tokensUsed, durationMs);
-    }
-    
-    /**
-     * Tracks an embedding generation call to Langfuse with full note information and custom tags.
-     * Delegates to LangfuseTracker.
-     * 
-     * @param traceId ID of the parent trace to link this generation to
-     * @param note the full note that was embedded
-     * @param model the embedding model used
-     * @param campaignId the campaign UUID
-     * @param tokensUsed exact number of tokens consumed (from OpenAI API)
-     * @param durationMs time taken in milliseconds
-     * @param customTags additional custom tags to include
-     * @return true if tracking was successful, false otherwise
-     */
-    public boolean trackEmbedding(String traceId, Note note, String model, String campaignId, 
-                                 int tokensUsed, long durationMs, List<String> customTags) {
-        return tracker.trackEmbedding(traceId, note, model, campaignId, tokensUsed, durationMs, customTags);
-    }
-    
-    /**
-     * Tracks a note processing session to Langfuse.
-     * Delegates to LangfuseTracker.
-     * 
-     * @param sessionName name of the session (e.g., "note-processing")
-     * @param campaignId the campaign UUID
-     * @param noteId the note ID
-     * @param userId user performing the action (if available)
-     * @return trace ID for linking related generations, or null if failed
-     */
-    public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId) {
-        return tracker.trackNoteProcessingSession(sessionName, campaignId, noteId, userId);
-    }
-    
-    /**
-     * Tracks a note processing session to Langfuse with custom tags.
-     * Delegates to LangfuseTracker.
-     * 
-     * @param sessionName name of the session (e.g., "note-processing")
-     * @param campaignId the campaign UUID
-     * @param noteId the note ID
-     * @param userId user performing the action (if available)
-     * @param customTags additional custom tags to include
-     * @return trace ID for linking related generations, or null if failed
-     */
-    public String trackNoteProcessingSession(String sessionName, String campaignId, String noteId, String userId, List<String> customTags) {
-        return tracker.trackNoteProcessingSession(sessionName, campaignId, noteId, userId, customTags);
-    }
-    
-    /**
-     * Tracks an LLM generation to Langfuse for observability.
-     * Delegates to LangfuseTracker.
-     * 
-     * @param traceId the trace ID to associate this generation with
-     * @param model the model used (e.g., "o1-mini", "o1")
-     * @param prompt the input prompt sent to the model
-     * @param response the response received from the model
-     * @param tokens number of tokens used
-     * @param duration duration of the operation in milliseconds
-     * @return true if tracked successfully, false otherwise
-     */
-    public boolean trackLLMGeneration(String traceId, String model, String prompt, String response, int tokens, long duration) {
-        return tracker.trackLLMGeneration(traceId, model, prompt, response, tokens, duration);
-    }
-    
-    /**
-     * Tracks an artifact extraction workflow session to Langfuse.
-     * Delegates to LangfuseTracker.
-     * 
-     * @param sessionName name of the session (e.g., "artifact-extraction")
-     * @param campaignId the campaign UUID
-     * @param noteId the note ID being processed
-     * @return trace ID for linking related generations, or null if failed
-     */
-    public String trackArtifactExtractionWorkflow(String sessionName, String campaignId, String noteId) {
-        return tracker.trackArtifactExtractionWorkflow(sessionName, campaignId, noteId);
-    }
-    
-    /**
-     * Retrieves a trace from Langfuse by its ID asynchronously.
-     * Delegates to LangfuseTracker.
-     * 
-     * @param traceId the ID of the trace to retrieve
-     * @return CompletableFuture containing JsonObject with trace data, or null if not found
-     */
-    public CompletableFuture<JsonObject> getTrace(String traceId) {
-        return tracker.getTrace(traceId);
-    }
+    // Note: All tracking methods have been removed as they are now handled directly
+    // by TraceManager and Observation classes in the respective service layers.
+    // This provides better separation of concerns and eliminates unnecessary delegation.
     
     // === PROMPT MANAGER DELEGATION ===
     
@@ -500,9 +391,9 @@ public class LangfuseClient {
      * Gets the underlying HTTP client instance.
      * For advanced usage and testing scenarios.
      * 
-     * @return the LangfuseHttpClient instance
+     * @return the LangfuseBasicHttpClient instance
      */
-    public LangfuseHttpClient getHttpClient() {
+    public LangfuseBasicHttpClient getHttpClient() {
         return httpClient;
     }
     
@@ -526,13 +417,4 @@ public class LangfuseClient {
         return promptManager;
     }
     
-    /**
-     * Gets the underlying tracker instance.
-     * For advanced usage and testing scenarios.
-     * 
-     * @return the LangfuseTracker instance
-     */
-    public LangfuseTracker getTracker() {
-        return tracker;
-    }
 }

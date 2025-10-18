@@ -35,7 +35,6 @@ public class QdrantRepository {
                 int qdrantPort = Integer.parseInt(qdrantPortStr);
                 qdrantClient = new QdrantClient(
                         QdrantGrpcClient.newBuilder(qdrantUrl, qdrantPort, false).build());
-                System.out.println("Qdrant client initialized successfully");
             } catch (Exception e) {
                 System.err.println("Failed to initialize Qdrant client: " + e.getMessage());
                 return null;
@@ -50,7 +49,6 @@ public class QdrantRepository {
             if (client != null) {
                 var future = client.listCollectionsAsync();
                 future.get(5, java.util.concurrent.TimeUnit.SECONDS);
-                System.out.println("Qdrant database is available");
                 return true;
             }
             return false;
@@ -63,7 +61,6 @@ public class QdrantRepository {
     public void close() {
         if (qdrantClient != null) {
             qdrantClient.close();
-            System.out.println("Qdrant database closed");
         }
     }
 }

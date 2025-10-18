@@ -19,7 +19,7 @@ import model.LLMResponse;
 /**
  * Service for communicating with OpenAI API for LLM operations.
  * Currently uses HTTP calls but has SDK client prepared for future migration.
- * Provides functionality to generate responses using o1 and o1-mini models.
+ * Provides functionality to generate responses using o3-mini model.
  */
 public class OpenAILLMService {
     
@@ -101,7 +101,7 @@ public class OpenAILLMService {
     /**
      * Generates a response with retry logic.
      * 
-     * @param model the model to use ("o1" or "o1-mini")
+     * @param model the model to use (e.g., "o3-mini")
      * @param systemPrompt the system prompt
      * @param inputPrompt the user input prompt
      * @param maxRetries maximum number of retries
@@ -114,9 +114,6 @@ public class OpenAILLMService {
             lastResponse = generateWithModel(model, systemPrompt, inputPrompt);
             
             if (lastResponse.isSuccessful()) {
-                if (attempt > 1) {
-                    System.out.println("LLM generation successful on attempt " + attempt);
-                }
                 return lastResponse;
             }
             
@@ -161,8 +158,7 @@ public class OpenAILLMService {
             // Create messages array
             JsonArray messages = new JsonArray();
             
-            // For o1 models, we combine system and user prompts into a single user message
-            // as o1 models handle instructions differently
+            // Combine system and user prompts into a single user message for instruction-following models
             String combinedPrompt = systemPrompt + "\n\n" + inputPrompt;
             
             JsonObject userMessage = new JsonObject();
@@ -198,14 +194,24 @@ public class OpenAILLMService {
                 
                 // Extract token usage
                 int totalTokens = 0;
+                int promptTokens = 0;
+                int completionTokens = 0;
                 if (responseJson.has("usage")) {
                     JsonObject usage = responseJson.getAsJsonObject("usage");
-                    totalTokens = usage.get("total_tokens").getAsInt();
+                    if (usage.has("total_tokens")) {
+                        totalTokens = usage.get("total_tokens").getAsInt();
+                    }
+                    if (usage.has("prompt_tokens")) {
+                        promptTokens = usage.get("prompt_tokens").getAsInt();
+                    }
+                    if (usage.has("completion_tokens")) {
+                        completionTokens = usage.get("completion_tokens").getAsInt();
+                    }
                 }
                 
-                System.out.println("OpenAI " + model + " generation successful. Tokens: " + totalTokens + 
-                                 ", Duration: " + duration + "ms");
-                
+                if (promptTokens > 0 || completionTokens > 0) {
+                    return new LLMResponse(content, promptTokens, completionTokens, model, duration);
+                }
                 return new LLMResponse(content, totalTokens, model, duration);
                 
             } else {
@@ -246,7 +252,6 @@ public class OpenAILLMService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                System.out.println("OpenAI API is available");
                 return true;
             } else {
                 System.err.println("OpenAI API check failed. Status: " + response.statusCode());

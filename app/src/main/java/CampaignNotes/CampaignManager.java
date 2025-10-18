@@ -201,7 +201,6 @@ public class CampaignManager {
                 return pointsCount > 0;
             } catch (Exception e) {
                 // Collection doesn't exist, so no existing notes
-                System.out.println("Collection does not exist: " + collectionName);
                 return false;
             }
             
@@ -257,9 +256,6 @@ public class CampaignManager {
                     List.of(point)
             ).get();
             
-            System.out.println("Note successfully stored in Qdrant collection: " + 
-                campaign.getQuadrantCollectionName() + " with ID: " + numericId);
-            
             return true;
             
         } catch (Exception e) {
@@ -279,7 +275,6 @@ public class CampaignManager {
             qdrantClient.getCollectionInfoAsync(campaign.getQuadrantCollectionName()).get();
         } catch (Exception e) {
             // Collection doesn't exist, create it
-            System.out.println("Creating Qdrant collection: " + campaign.getQuadrantCollectionName());
             qdrantClient.createCollectionAsync(
                     campaign.getQuadrantCollectionName(),
                     VectorParams.newBuilder()
@@ -298,7 +293,6 @@ public class CampaignManager {
      * @return true if all connections were closed successfully, false if there were errors
      */
     public boolean endManaging() {
-        System.out.println("Initiating safe shutdown of CampaignManager...");
         boolean success = true;
         
         try {
@@ -310,14 +304,12 @@ public class CampaignManager {
                 if (qdrantClient != null) {
                     try {
                         // Flush any pending operations by checking collection status for all campaigns
-                        System.out.println("Ensuring all Qdrant operations are completed...");
                         for (Campain campaign : campaignsMap.values()) {
                             try {
                                 // This will wait for any pending operations on this collection
                                 qdrantClient.getCollectionInfoAsync(campaign.getQuadrantCollectionName()).get();
                             } catch (Exception e) {
                                 // Collection might not exist, which is fine
-                                System.out.println("Collection " + campaign.getQuadrantCollectionName() + " not found or inaccessible");
                             }
                         }
                         
@@ -338,25 +330,18 @@ public class CampaignManager {
                 if (dbLoader.getNeo4jDriver() != null) {
                     try {
                         dbLoader.getNeo4jDriver().verifyConnectivity();
-                        System.out.println("Neo4j driver is responsive, proceeding with shutdown");
                     } catch (Exception e) {
                         System.err.println("Neo4j driver verification failed during shutdown: " + e.getMessage());
                         success = false;
                     }
                 }
-                
-            } else {
-                System.out.println("Databases are not available, proceeding with connection cleanup");
             }
             
             // Close all database connections
-            System.out.println("Closing database connections...");
             dbLoader.closeConnections();
             
             // Clear local campaign cache
             campaignsMap.clear();
-            
-            System.out.println("CampaignManager shutdown completed successfully");
             
         } catch (Exception e) {
             System.err.println("Error during CampaignManager shutdown: " + e.getMessage());

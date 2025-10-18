@@ -37,7 +37,6 @@ public class Neo4jRepository {
             try {
                 neo4jDriver = GraphDatabase.driver(dbUri, AuthTokens.basic(dbUser, dbPassword));
                 neo4jDriver.verifyConnectivity();
-                System.out.println("Neo4j driver initialized successfully");
             } catch (Exception e) {
                 System.err.println("Failed to initialize Neo4j driver: " + e.getMessage());
                 return null;
@@ -51,7 +50,6 @@ public class Neo4jRepository {
             Driver driver = getDriver();
             if (driver != null) {
                 driver.verifyConnectivity();
-                System.out.println("Neo4j database is available");
                 return true;
             }
             return false;
@@ -68,7 +66,6 @@ public class Neo4jRepository {
         if (neo4jDriver != null) {
             try {
                 neo4jDriver.close();
-                System.out.println("Neo4j connection closed");
             } catch (Exception e) {
                 System.err.println("Error closing Neo4j connection: " + e.getMessage());
             }

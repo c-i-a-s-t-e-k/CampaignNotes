@@ -50,8 +50,6 @@ public class ArtifactCategoryService {
                 }
             }
             
-            System.out.println("Retrieved " + categories.size() + " categories for campaign: " + campaignUuid);
-            
         } catch (SQLException e) {
             System.err.println("Error retrieving categories for campaign: " + e.getMessage());
         }
@@ -75,7 +73,6 @@ public class ArtifactCategoryService {
         
         // Check if the association already exists
         if (isCategoryAssignedToCampaign(campaignUuid, categoryName)) {
-            System.out.println("Category " + categoryName + " is already assigned to campaign " + campaignUuid);
             return true; // Consider this a success since the desired state is achieved
         }
         
@@ -90,7 +87,6 @@ public class ArtifactCategoryService {
             int affectedRows = pstmt.executeUpdate();
             
             if (affectedRows > 0) {
-                System.out.println("Added category " + categoryName + " to campaign " + campaignUuid);
                 return true;
             }
             
@@ -120,10 +116,8 @@ public class ArtifactCategoryService {
             int affectedRows = pstmt.executeUpdate();
             
             if (affectedRows > 0) {
-                System.out.println("Removed category " + categoryName + " from campaign " + campaignUuid);
                 return true;
             } else {
-                System.out.println("Category " + categoryName + " was not assigned to campaign " + campaignUuid);
                 return false;
             }
             
@@ -166,8 +160,6 @@ public class ArtifactCategoryService {
                 categories.add(category);
             }
             
-            System.out.println("Retrieved " + categories.size() + " artifact categories");
-            
         } catch (SQLException e) {
             System.err.println("Error retrieving all categories: " + e.getMessage());
         }
@@ -199,7 +191,6 @@ public class ArtifactCategoryService {
             int affectedRows = pstmt.executeUpdate();
             
             if (affectedRows > 0) {
-                System.out.println("Created new artifact category: " + category.getName());
                 return true;
             }
             
@@ -238,7 +229,6 @@ public class ArtifactCategoryService {
             int affectedRows = pstmt.executeUpdate();
             
             if (affectedRows > 0) {
-                System.out.println("Updated artifact category: " + category.getName());
                 return true;
             } else {
                 System.err.println("Category not found: " + category.getName());
@@ -266,10 +256,6 @@ public class ArtifactCategoryService {
                 allSuccessful = false;
                 System.err.println("Failed to assign default category: " + categoryName);
             }
-        }
-        
-        if (allSuccessful) {
-            System.out.println("All default categories assigned to campaign: " + campaignUuid);
         }
         
         return allSuccessful;
