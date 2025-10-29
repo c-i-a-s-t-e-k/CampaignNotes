@@ -227,7 +227,7 @@ public class CampaignManager {
                     .toList();
             
             // Generate hash of note ID for numerical ID
-            long numericId = Math.abs(note.getId().hashCode());
+            long numericId = note.getNumericId();
             
             // Create the point using the proper builder pattern with payload
             PointStruct point = PointStruct.newBuilder()

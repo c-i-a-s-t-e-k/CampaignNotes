@@ -264,4 +264,12 @@ public class Note {
             content.trim().split("\\s+").length,
             isOverride, isOverridden);
     }
+
+    public long getNumericId() {
+        return Note.getNumericId(this.id);
+    }
+
+    public static long getNumericId(String noteId) {
+        return Math.abs(noteId.hashCode());
+    }
 } 

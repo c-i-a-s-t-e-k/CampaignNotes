@@ -5,6 +5,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.llm.OpenAIEmbeddingService;
 import io.qdrant.client.QdrantClient;
@@ -19,6 +22,7 @@ import model.EmbeddingResult;
  */
 public class SemantickSearchService {
     
+    private static final Logger LOGGER = LoggerFactory.getLogger(SemantickSearchService.class);
     private static final int MAX_K = 100; // Maximum number of results to prevent resource exhaustion
     
     private final DatabaseConnectionManager dbConnectionManager;
@@ -53,53 +57,74 @@ public class SemantickSearchService {
      * @throws IllegalArgumentException if query is null/empty, k <= 0, or campaignUuid is null/empty
      */
     public List<String> getTopKMatch(String query, int k, String campaignUuid) {
+        LOGGER.debug("Starting semantic search - query: '{}', k: {}, campaignUuid: '{}'", 
+                query, k, campaignUuid);
+        
         // Input validation
         if (query == null || query.trim().isEmpty()) {
+            LOGGER.error("Validation failed: Query is null or empty");
             throw new IllegalArgumentException("Query cannot be null or empty");
         }
         if (k <= 0) {
+            LOGGER.error("Validation failed: k must be positive, got: {}", k);
             throw new IllegalArgumentException("k must be positive, got: " + k);
         }
         if (campaignUuid == null || campaignUuid.trim().isEmpty()) {
+            LOGGER.error("Validation failed: Campaign UUID is null or empty");
             throw new IllegalArgumentException("Campaign UUID cannot be null or empty");
         }
+        
+        LOGGER.debug("Input validation passed");
         
         // Clamp k to maximum allowed
         int effectiveK = Math.min(k, MAX_K);
         if (k > MAX_K) {
-            System.out.println("Warning: Requested k=" + k + " exceeds maximum, clamped to " + MAX_K);
+            LOGGER.warn("Requested k={} exceeds maximum {}, clamped to maximum", k, MAX_K);
+        } else {
+            LOGGER.debug("Using k={}", effectiveK);
         }
         
         try {
             // Fetch campaign to get Qdrant collection name
+            LOGGER.debug("Fetching campaign from database: {}", campaignUuid);
             Campain campaign = dbConnectionManager.getSqliteRepository().getCampaignById(campaignUuid);
             if (campaign == null) {
+                LOGGER.error("Campaign not found with UUID: {}", campaignUuid);
                 throw new IllegalArgumentException("Campaign not found with UUID: " + campaignUuid);
             }
+            LOGGER.debug("Campaign found: {}", campaign.getName());
             
             String collectionName = campaign.getQuadrantCollectionName();
             if (collectionName == null || collectionName.isEmpty()) {
-                System.err.println("Campaign has no Qdrant collection name");
+                LOGGER.error("Campaign '{}' has no Qdrant collection name", campaignUuid);
                 return Collections.emptyList();
             }
+            LOGGER.debug("Using Qdrant collection: '{}'", collectionName);
             
             // Generate embedding for the query
+            LOGGER.debug("Generating embedding for query: '{}'", query);
             EmbeddingResult embeddingResult = embeddingService.generateEmbeddingWithUsage(query);
             List<Double> embedding = embeddingResult.getEmbedding();
+            LOGGER.debug("Embedding generated successfully, dimension: {}", embedding.size());
             
             // Convert Double to Float for Qdrant API
             List<Float> embeddingFloats = embedding.stream()
                     .map(Double::floatValue)
                     .toList();
+            LOGGER.debug("Embedding converted to float format");
             
             // Get Qdrant client
+            LOGGER.debug("Getting Qdrant client");
             QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
             if (qdrantClient == null) {
-                System.err.println("Qdrant client not available");
+                LOGGER.error("Qdrant client is not available");
                 return Collections.emptyList();
             }
+            LOGGER.debug("Qdrant client obtained successfully");
             
             // Perform search
+            LOGGER.debug("Building search request for collection '{}' with limit {}", 
+                    collectionName, effectiveK);
             SearchPoints searchRequest = SearchPoints.newBuilder()
                     .setCollectionName(collectionName)
                     .addAllVector(embeddingFloats)
@@ -107,8 +132,11 @@ public class SemantickSearchService {
                     .setWithPayload(io.qdrant.client.WithPayloadSelectorFactory.enable(true))
                     .build();
             
+            LOGGER.info("Executing semantic search in collection '{}' for query: '{}'", 
+                    collectionName, query);
             List<ScoredPoint> searchResults = qdrantClient.searchAsync(searchRequest)
                     .get(); // Wait for async result
+            LOGGER.info("Search completed successfully, found {} results", searchResults.size());
             
             // Extract note_id from each result's payload in order
             List<String> noteIds = new ArrayList<>();
@@ -119,32 +147,40 @@ public class SemantickSearchService {
                     
                     if (noteId != null && !noteId.isEmpty()) {
                         noteIds.add(noteId);
+                        LOGGER.debug("Result #{}: note_id='{}', score={}", 
+                                noteIds.size(), noteId, point.getScore());
+                    } else {
+                        LOGGER.warn("Found result with empty note_id, skipping");
                     }
+                } else {
+                    LOGGER.warn("Found result without note_id in payload, skipping");
                 }
             }
             
+            LOGGER.info("Extracted {} valid note IDs from search results", noteIds.size());
             return noteIds;
             
         } catch (IllegalArgumentException e) {
             // Re-throw validation exceptions
+            LOGGER.error("Validation error during semantic search: {}", e.getMessage());
             throw e;
         } catch (ExecutionException e) {
             // Handle async execution errors
-            System.err.println("Error executing Qdrant search: " + e.getMessage());
+            LOGGER.error("Error executing Qdrant search: {}", e.getMessage(), e);
             if (e.getCause() != null) {
-                System.err.println("Caused by: " + e.getCause().getMessage());
+                LOGGER.error("Caused by: {}", e.getCause().getMessage());
             }
             return Collections.emptyList();
         } catch (InterruptedException e) {
             // Handle interruption
             Thread.currentThread().interrupt();
-            System.err.println("Search was interrupted: " + e.getMessage());
+            LOGGER.error("Search was interrupted: {}", e.getMessage(), e);
             return Collections.emptyList();
         } catch (Exception e) {
             // Handle any other unexpected errors
-            System.err.println("Unexpected error during semantic search: " + e.getMessage());
+            LOGGER.error("Unexpected error during semantic search: {}", e.getMessage(), e);
             if (e.getCause() != null) {
-                System.err.println("Caused by: " + e.getCause().getMessage());
+                LOGGER.error("Caused by: {}", e.getCause().getMessage());
             }
             return Collections.emptyList();
         }

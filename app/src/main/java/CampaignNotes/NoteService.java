@@ -1,9 +1,19 @@
 package CampaignNotes;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.llm.OpenAIEmbeddingService;
 import CampaignNotes.tracking.otel.OTelEmbeddingObservation;
 import CampaignNotes.tracking.otel.OTelTraceManager;
 import CampaignNotes.tracking.otel.OTelTraceManager.OTelTrace;
+import io.qdrant.client.QdrantClient;
+import io.qdrant.client.grpc.Points.PointId;
+import io.qdrant.client.grpc.Points.RetrievedPoint;
 import model.ArtifactProcessingResult;
 import model.Campain;
 import model.EmbeddingResult;
@@ -19,6 +29,7 @@ public class NoteService {
     private final OpenAIEmbeddingService embeddingService;
     private final OTelTraceManager traceManager;
     private final ArtifactGraphService artifactService;
+    private final DatabaseConnectionManager dbConnectionManager;
     
     /**
      * Constructor initializes all required services with OpenTelemetry tracking.
@@ -30,6 +41,7 @@ public class NoteService {
         // Initialize OpenTelemetry trace manager
         this.traceManager = new OTelTraceManager();
         this.artifactService = new ArtifactGraphService();
+        this.dbConnectionManager = new DatabaseConnectionManager();
     }
     
     /**
@@ -153,5 +165,143 @@ public class NoteService {
         return campaignManager.checkDatabasesAvailability() && 
                embeddingService != null && 
                traceManager != null;
+    }
+    
+    /**
+     * Retrieves full Note objects from Qdrant by their IDs.
+     * Maintains the order of input noteIds to preserve semantic search ranking.
+     * 
+     * @param noteIds list of note IDs to retrieve
+     * @param collectionName Qdrant collection name to retrieve from
+     * @return list of Note objects in the same order as noteIds, empty list on error
+     */
+    public List<Note> getNotesByIds(List<String> noteIds, String collectionName) {
+        if (noteIds == null || noteIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        if (collectionName == null || collectionName.trim().isEmpty()) {
+            System.err.println("Collection name cannot be null or empty");
+            return new ArrayList<>();
+        }
+        
+        try {
+            QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
+            if (qdrantClient == null) {
+                System.err.println("Qdrant client not available");
+                return new ArrayList<>();
+            }
+            
+            // Create a map to store retrieved notes for ordering
+            Map<String, Note> noteMap = new LinkedHashMap<>();
+            
+            // Convert note IDs to numeric IDs (using same hashing as storage)
+            List<PointId> pointIds = new ArrayList<>();
+            for (String noteId : noteIds) {
+                long numericId = Note.getNumericId(noteId);
+                pointIds.add(PointId.newBuilder().setNum(numericId).build());
+            }
+            
+            // Retrieve points from Qdrant
+            List<RetrievedPoint> retrievedPoints = qdrantClient.retrieveAsync(
+                collectionName,
+                pointIds,
+                true, // with payload
+                false, // with vectors
+                null  // read consistency
+            ).get();
+            
+            // Convert retrieved points to Note objects
+            for (RetrievedPoint point : retrievedPoints) {
+                Note note = reconstructNoteFromPayload(point);
+                if (note != null) {
+                    noteMap.put(note.getId(), note);
+                }
+            }
+            
+            // Maintain original order from noteIds
+            List<Note> orderedNotes = new ArrayList<>();
+            for (String noteId : noteIds) {
+                Note note = noteMap.get(noteId);
+                if (note != null) {
+                    orderedNotes.add(note);
+                }
+            }
+            
+            return orderedNotes;
+            
+        } catch (Exception e) {
+            System.err.println("Error retrieving notes from Qdrant: " + e.getMessage());
+            if (e.getCause() != null) {
+                System.err.println("Caused by: " + e.getCause().getMessage());
+            }
+            return new ArrayList<>();
+        }
+    }
+    
+    /**
+     * Reconstructs a Note object from Qdrant point payload.
+     * 
+     * @param point the retrieved point from Qdrant
+     * @return reconstructed Note object or null if reconstruction fails
+     */
+    private Note reconstructNoteFromPayload(RetrievedPoint point) {
+        try {
+            var payload = point.getPayloadMap();
+            
+            if (!payload.containsKey("note_id") || !payload.containsKey("title") || 
+                !payload.containsKey("content") || !payload.containsKey("campaign_uuid")) {
+                System.err.println("Missing required fields in Qdrant payload");
+                return null;
+            }
+            
+            // Create basic note
+            String campaignUuid = payload.get("campaign_uuid").getStringValue();
+            String title = payload.get("title").getStringValue();
+            String content = payload.get("content").getStringValue();
+            
+            Note note = new Note(campaignUuid, title, content);
+            
+            // Set ID from payload
+            note.setId(payload.get("note_id").getStringValue());
+            
+            // Set timestamps if available
+            if (payload.containsKey("created_at")) {
+                try {
+                    LocalDateTime createdAt = LocalDateTime.parse(payload.get("created_at").getStringValue());
+                    note.setCreatedAt(createdAt);
+                } catch (Exception e) {
+                    // Keep default timestamp if parsing fails
+                }
+            }
+            
+            if (payload.containsKey("updated_at")) {
+                try {
+                    LocalDateTime updatedAt = LocalDateTime.parse(payload.get("updated_at").getStringValue());
+                    note.setUpdatedAt(updatedAt);
+                } catch (Exception e) {
+                    // Keep default timestamp if parsing fails
+                }
+            }
+            
+            // Set override flags
+            if (payload.containsKey("is_override")) {
+                note.setOverride(payload.get("is_override").getBoolValue());
+            }
+            
+            if (payload.containsKey("is_overridden")) {
+                note.setOverridden(payload.get("is_overridden").getBoolValue());
+            }
+            
+            if (payload.containsKey("override_reason")) {
+                note.setOverrideReason(payload.get("override_reason").getStringValue());
+            }
+            
+            return note;
+            
+        } catch (Exception e) {
+            System.err.println("Error reconstructing note from payload: " + e.getMessage());
+            return null;
+        }
     }
 } 

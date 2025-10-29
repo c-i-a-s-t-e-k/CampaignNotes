@@ -49,6 +49,10 @@ dependencies {
     // Gson for JSON parsing - kept for existing code compatibility (used by LangfusePromptManager)
     implementation 'com.google.code.gson:gson:2.10.1'
     
+    // SLF4J API and Logback implementation for logging
+    implementation 'org.slf4j:slf4j-api:2.0.9'
+    implementation 'ch.qos.logback:logback-classic:1.4.11'
+    
     // OpenTelemetry Core
     implementation 'io.opentelemetry:opentelemetry-api:1.40.0'
     implementation 'io.opentelemetry:opentelemetry-sdk:1.40.0'
@@ -110,4 +114,44 @@ task integrationTest(type: Test) {
     jvmArgs '-Xmx1024m'
     
     shouldRunAfter test
+}
+
+// Task for running application with create scenario (creates campaign and adds 5 notes)
+task runCreate(type: JavaExec) {
+    description = 'Runs the application with create scenario: creates a campaign and adds 5 notes'
+    group = 'application'
+    
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+    
+    // Read input from terminal_input_create.txt
+    def inputFile = file('../tmp/terminal_input_create.txt')
+    if (inputFile.exists()) {
+        standardInput = new FileInputStream(inputFile)
+    } else {
+        throw new GradleException("Input file not found: ${inputFile.absolutePath}")
+    }
+    
+    // Set encoding
+    systemProperty 'file.encoding', 'UTF-8'
+}
+
+// Task for running application with ask scenario (selects campaign and performs semantic search)
+task runAsk(type: JavaExec) {
+    description = 'Runs the application with ask scenario: selects campaign and performs semantic search'
+    group = 'application'
+    
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+    
+    // Read input from terminal_input_ask.txt
+    def inputFile = file('../tmp/terminal_input_ask.txt')
+    if (inputFile.exists()) {
+        standardInput = new FileInputStream(inputFile)
+    } else {
+        throw new GradleException("Input file not found: ${inputFile.absolutePath}")
+    }
+    
+    // Set encoding
+    systemProperty 'file.encoding', 'UTF-8'
 }
