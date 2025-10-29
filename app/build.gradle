@@ -71,8 +71,10 @@ application {
 }
 
 test {
-    // Use JUnit 5 platform
-    useJUnitPlatform()
+    // Use JUnit 5 platform - exclude integration tests by default
+    useJUnitPlatform {
+        excludeTags 'integration'
+    }
 
     // Show test results
     testLogging {
@@ -85,4 +87,27 @@ test {
 
     // Set JVM arguments
     jvmArgs '-Xmx1024m'
+}
+
+// Task for running integration tests only
+task integrationTest(type: Test) {
+    description = 'Runs integration tests tagged with @Tag("integration")'
+    group = 'verification'
+    
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+    
+    // Set system properties for tests
+    systemProperty 'file.encoding', 'UTF-8'
+    
+    // Set JVM arguments
+    jvmArgs '-Xmx1024m'
+    
+    shouldRunAfter test
 }
