@@ -19,6 +19,10 @@ repositories {
 dependencies {
     // Use JUnit 5 (Jupiter) for testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    
+    // Mockito for mocking in tests
+    testImplementation 'org.mockito:mockito-core:5.15.2'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.15.2'
 
     // This dependency is used by the application.
     implementation 'com.google.guava:guava:33.4.8-jre'
