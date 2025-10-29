@@ -25,6 +25,24 @@ public class DatabaseConnectionManager {
         this.sqliteRepository = new SqliteRepository("sqlite.db");
         this.neo4jRepository = new Neo4jRepository(this.dotenv);
         this.qdrantRepository = new QdrantRepository(this.dotenv);
+        
+        // Initialize database schema
+        initializeDatabase();
+    }
+    
+    /**
+     * Initializes the database schema by creating tables and default data.
+     */
+    private void initializeDatabase() {
+        try {
+            sqliteRepository.ensureUsersTableExists();
+            sqliteRepository.ensureCampaignsTableExists();
+            sqliteRepository.ensureArtifactTablesExist();
+            sqliteRepository.insertDefaultArtifactCategories();
+            sqliteRepository.createDefaultUserIfNeeded();
+        } catch (Exception e) {
+            System.err.println("Error initializing database: " + e.getMessage());
+        }
     }
 
     public SqliteRepository getSqliteRepository() {

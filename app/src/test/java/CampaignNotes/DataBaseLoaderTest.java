@@ -18,11 +18,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import io.qdrant.client.QdrantClient;
 import model.Campain;
 
+@Tag("integration")
 @DisplayName("Database Loader Tests")
 class DataBaseLoaderTest {
     private DataBaseLoader dataBaseLoader;

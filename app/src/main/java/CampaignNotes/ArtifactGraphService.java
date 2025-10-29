@@ -11,6 +11,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.LangfuseClient;
 import CampaignNotes.tracking.otel.OTelGenerationObservation;
@@ -34,7 +35,7 @@ public class ArtifactGraphService {
     private final LangfuseClient langfuseClient;
     private final OTelTraceManager traceManager;
     private final ArtifactCategoryService categoryService;
-    private final DataBaseLoader dbLoader;
+    private final DatabaseConnectionManager dbConnectionManager;
     private final Gson gson;
     
     // Timeout for the entire workflow (1 minute as per PRD)
@@ -45,27 +46,35 @@ public class ArtifactGraphService {
     private static final String RELATIONSHIP_EXTRACTION_MODEL = "o3-mini";
     
     /**
-     * Constructor with OpenTelemetry tracking
+     * Constructor with OpenTelemetry tracking.
+     * 
+     * @deprecated Use {@link #ArtifactGraphService(OpenAILLMService, ArtifactCategoryService, DatabaseConnectionManager)} instead
      */
+    @Deprecated
     public ArtifactGraphService() {
         this.llmService = new OpenAILLMService();
-        this.langfuseClient = new LangfuseClient();
-        this.traceManager = new OTelTraceManager();
+        this.langfuseClient = LangfuseClient.getInstance();
+        this.traceManager = OTelTraceManager.getInstance();
         this.categoryService = new ArtifactCategoryService();
-        this.dbLoader = new DataBaseLoader();
+        this.dbConnectionManager = new DatabaseConnectionManager();
         this.gson = new Gson();
     }
     
     /**
-     * Constructor for dependency injection (for testing)
+     * Constructor for dependency injection.
+     * 
+     * @param llmService the LLM service to use
+     * @param categoryService the artifact category service to use
+     * @param dbConnectionManager the database connection manager to use
      */
-    public ArtifactGraphService(OpenAILLMService llmService, LangfuseClient langfuseClient, 
-                               ArtifactCategoryService categoryService, DataBaseLoader dbLoader) {
+    public ArtifactGraphService(OpenAILLMService llmService, 
+                               ArtifactCategoryService categoryService, 
+                               DatabaseConnectionManager dbConnectionManager) {
         this.llmService = llmService;
-        this.langfuseClient = langfuseClient;
-        this.traceManager = new OTelTraceManager();
+        this.langfuseClient = LangfuseClient.getInstance();
+        this.traceManager = OTelTraceManager.getInstance();
         this.categoryService = categoryService;
-        this.dbLoader = dbLoader;
+        this.dbConnectionManager = dbConnectionManager;
         this.gson = new Gson();
     }
     
@@ -331,7 +340,7 @@ public class ArtifactGraphService {
      */
     private boolean saveToNeo4j(List<Artifact> artifacts, List<Relationship> relationships, Campain campaign) {
         try {
-            var driver = dbLoader.getNeo4jDriver();
+            var driver = dbConnectionManager.getNeo4jRepository().getDriver();
             if (driver == null) {
                 System.err.println("Neo4j driver not available");
                 return false;

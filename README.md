@@ -1,6 +1,6 @@
 # CampaignNotes
 
-Application designed to assist in tracking and organizing your RPG sessions.
+Application designed to assist in tracking yore notes and helping organizing your RPG sessions with usage of LLM power.
 
 ## Technology Stack
 
@@ -12,7 +12,7 @@ Application designed to assist in tracking and organizing your RPG sessions.
 - **Qdrant** - Vector database for semantic search
 
 ### AI Integration
-- **OpenAI API** (via OpenRouter) - LLM and embedding generation
+- **OpenAI API** - LLM and embedding generation
 - **Langfuse** - AI observability and prompt management
 - **OpenTelemetry** - Distributed tracing
 
@@ -31,8 +31,8 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
 
-# OpenAI Configuration (via OpenRouter)
-OPENAI_API_KEY=your-openrouter-api-key
+# OpenAI Configuration
+OPENAI_API_KEY=your-api-key
 
 # Database Configuration
 NEO4J_URI=bolt://localhost:7687
@@ -66,8 +66,16 @@ Access your Langfuse dashboard to view:
 # Run the application
 ./gradlew run
 
-# Run tests
+
+#testowanie
+#Uruchomienie tylko UNIT testów
 ./gradlew test
+
+# Uruchom unit testy + integration testy
+./gradlew test integrationTest
+
+# Lub w jednym poleceniu (clean build z wszystkimi testami)
+./gradlew clean build integrationTest
 ```
 
 ## Architecture

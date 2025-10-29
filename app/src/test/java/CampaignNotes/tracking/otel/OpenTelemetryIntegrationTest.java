@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
  * These tests verify that OpenTelemetry spans are created correctly
  * and exported to Langfuse via the OTLP endpoint.
  */
+@Tag("integration")
 @DisplayName("OpenTelemetry Integration Tests")
 class OpenTelemetryIntegrationTest {
     

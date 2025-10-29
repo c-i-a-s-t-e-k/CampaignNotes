@@ -19,6 +19,10 @@ repositories {
 dependencies {
     // Use JUnit 5 (Jupiter) for testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    
+    // Mockito for mocking in tests
+    testImplementation 'org.mockito:mockito-core:5.15.2'
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.15.2'
 
     // This dependency is used by the application.
     implementation 'com.google.guava:guava:33.4.8-jre'
@@ -45,6 +49,10 @@ dependencies {
     // Gson for JSON parsing - kept for existing code compatibility (used by LangfusePromptManager)
     implementation 'com.google.code.gson:gson:2.10.1'
     
+    // SLF4J API and Logback implementation for logging
+    implementation 'org.slf4j:slf4j-api:2.0.9'
+    implementation 'ch.qos.logback:logback-classic:1.4.11'
+    
     // OpenTelemetry Core
     implementation 'io.opentelemetry:opentelemetry-api:1.40.0'
     implementation 'io.opentelemetry:opentelemetry-sdk:1.40.0'
@@ -67,8 +75,10 @@ application {
 }
 
 test {
-    // Use JUnit 5 platform
-    useJUnitPlatform()
+    // Use JUnit 5 platform - exclude integration tests by default
+    useJUnitPlatform {
+        excludeTags 'integration'
+    }
 
     // Show test results
     testLogging {
@@ -81,4 +91,73 @@ test {
 
     // Set JVM arguments
     jvmArgs '-Xmx1024m'
+}
+
+// Task for running integration tests only
+task integrationTest(type: Test) {
+    description = 'Runs integration tests tagged with @Tag("integration")'
+    group = 'verification'
+    
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+    
+    // Set system properties for tests
+    systemProperty 'file.encoding', 'UTF-8'
+    
+    // Set JVM arguments
+    jvmArgs '-Xmx1024m'
+    
+    shouldRunAfter test
+}
+
+// Task for running application with create scenario (creates campaign and adds 5 notes)
+task runCreate(type: JavaExec) {
+    description = 'Runs the application with create scenario: creates a campaign and adds 5 notes'
+    group = 'application'
+    
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+    
+    // Check if input file exists before running
+    doFirst {
+        def inputFile = file('../tmp/terminal_input_create.txt')
+        if (!inputFile.exists()) {
+            println "⚠️  Plik wejściowy nie został znaleziony: ${inputFile.absolutePath}"
+            println "⚠️  Akcja zostaje zatrzymana."
+            throw new StopExecutionException("Brak wymaganego pliku wejściowego")
+        }
+        standardInput = new FileInputStream(inputFile)
+    }
+    
+    // Set encoding
+    systemProperty 'file.encoding', 'UTF-8'
+}
+
+// Task for running application with ask scenario (selects campaign and performs semantic search)
+task runAsk(type: JavaExec) {
+    description = 'Runs the application with ask scenario: selects campaign and performs semantic search'
+    group = 'application'
+    
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+    
+    // Check if input file exists before running
+    doFirst {
+        def inputFile = file('../tmp/terminal_input_ask.txt')
+        if (!inputFile.exists()) {
+            println "⚠️  Plik wejściowy nie został znaleziony: ${inputFile.absolutePath}"
+            println "⚠️  Akcja zostaje zatrzymana."
+            throw new StopExecutionException("Brak wymaganego pliku wejściowego")
+        }
+        standardInput = new FileInputStream(inputFile)
+    }
+    
+    // Set encoding
+    systemProperty 'file.encoding', 'UTF-8'
 }

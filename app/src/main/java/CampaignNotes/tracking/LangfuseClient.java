@@ -38,6 +38,8 @@ import model.PromptContent;
  */
 public class LangfuseClient {
     
+    private static LangfuseClient instance;
+    
     // Core service components
     private final LangfuseConfig config;
     private final LangfuseBasicHttpClient httpClient;
@@ -54,6 +56,19 @@ public class LangfuseClient {
         this.modelService = new LangfuseModelService(httpClient);
         this.promptManager = new LangfusePromptManager(httpClient);
         
+    }
+    
+    /**
+     * Gets the singleton instance of LangfuseClient.
+     * Thread-safe lazy initialization.
+     * 
+     * @return the singleton instance
+     */
+    public static synchronized LangfuseClient getInstance() {
+        if (instance == null) {
+            instance = new LangfuseClient();
+        }
+        return instance;
     }
     
     /**

@@ -3,6 +3,8 @@ package CampaignNotes;
 import java.util.List;
 import java.util.Scanner;
 
+import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.llm.OpenAIEmbeddingService;
 import model.Campain;
 import model.Note;
 
@@ -16,15 +18,29 @@ public class TerminalInterface {
     private final Scanner scanner;
     private final CampaignManager campaignManager;
     private final NoteService noteService;
+    private final SemantickSearchService searchService;
+    private final DatabaseConnectionManager dbConnectionManager;
     private boolean running;
     
     /**
      * Constructor initializes the terminal interface with required services.
+     * Uses dependency injection to ensure all services share the same resource instances.
      */
     public TerminalInterface() {
         this.scanner = new Scanner(System.in);
-        this.campaignManager = new CampaignManager();
-        this.noteService = new NoteService();
+        
+        // Initialize shared resources (singleton pattern)
+        this.dbConnectionManager = new DatabaseConnectionManager();
+        OpenAIEmbeddingService embeddingService = new OpenAIEmbeddingService();
+        CampaignNotes.llm.OpenAILLMService llmService = new CampaignNotes.llm.OpenAILLMService();
+        
+        // Initialize services with proper dependency injection
+        this.campaignManager = new CampaignManager(dbConnectionManager);
+        ArtifactCategoryService categoryService = new ArtifactCategoryService(dbConnectionManager);
+        ArtifactGraphService artifactService = new ArtifactGraphService(llmService, categoryService, dbConnectionManager);
+        this.noteService = new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager);
+        this.searchService = new SemantickSearchService(dbConnectionManager, embeddingService);
+        
         this.running = false;
     }
     
@@ -231,11 +247,7 @@ public class TerminalInterface {
                     addNoteToCampaign(campaign);
                     break;
                 case "2":
-                    addOverrideNoteToCampaign(campaign);
-                    break;
-                case "3":
-                    // Future: View campaign notes
-                    System.out.println("Feature not yet implemented: View notes");
+                    searchNotesInCampaign(campaign);
                     break;
                 case "4":
                     workingWithCampaign = false;
@@ -253,8 +265,7 @@ public class TerminalInterface {
     private void showCampaignMenu(Campain campaign) {
         System.out.println("\n=== Campaign: " + campaign.getName() + " ===");
         System.out.println("1. Add new note");
-        System.out.println("2. Add override note");
-        System.out.println("3. View notes (coming soon)");
+        System.out.println("2. Search notes");
         System.out.println("4. Back to main menu");
         System.out.print("Choose an option (1-4): ");
     }
@@ -330,84 +341,117 @@ public class TerminalInterface {
     }
     
     /**
-     * Adds an override note to the campaign.
+     * Searches notes in the campaign using semantic search.
+     * Displays top 2 results and allows user to select one for detailed view.
      */
-    private void addOverrideNoteToCampaign(Campain campaign) {
-        System.out.println("\n=== Add Override Note to " + campaign.getName() + " ===");
+    private void searchNotesInCampaign(Campain campaign) {
+        System.out.println("\n=== Search Notes in " + campaign.getName() + " ===");
+        System.out.print("Enter your search query: ");
+        String query = scanner.nextLine().trim();
         
-        System.out.print("Enter note title: ");
-        String title = scanner.nextLine().trim();
-        
-        if (title.isEmpty()) {
-            System.err.println("Title cannot be empty.");
+        if (query.isEmpty()) {
+            System.err.println("Search query cannot be empty.");
             return;
         }
         
-        System.out.println("Enter note content (max 500 words):");
-        String content = scanner.nextLine().trim();
-        
-        if (content.isEmpty()) {
-            System.err.println("Content cannot be empty.");
-            return;
-        }
-        
-        System.out.print("Enter override reason: ");
-        String overrideReason = scanner.nextLine().trim();
-        
-        if (overrideReason.isEmpty()) {
-            System.err.println("Override reason cannot be empty.");
-            return;
-        }
-        
-        // Create and validate override note
-        Note note = new Note(campaign.getUuid(), title, content, overrideReason);
-        
-        if (!note.isValid()) {
-            System.err.println("Note validation failed. Please check:");
-            System.err.println("- Title, content, and override reason are not empty");
-            System.err.println("- Content does not exceed 500 words");
-            String[] words = content.split("\\s+");
-            System.err.println("Current word count: " + words.length);
-            return;
-        }
-        
-        System.out.println("Override note created successfully!");
-        System.out.println("Note details: " + note.toString());
-        
-        // Process and store override note with full workflow
-        System.out.println("\nProcessing override note...");
-        System.out.println("⏳ Generating embedding and extracting narrative artifacts...");
+        System.out.println("\n🔍 Searching for: \"" + query + "\"...");
         
         try {
-            boolean success = noteService.addNote(note, campaign);
-            if (success) {
-                System.out.println("✅ Override note successfully added to campaign!");
-                System.out.println("📝 Note stored with embedding in Qdrant");
-                System.out.println("🤖 AI-powered artifact extraction completed");
-                System.out.println("📊 Data saved to Neo4j graph database");
-                System.out.println("🔄 Override relationships processed");
-                
-                // Show completion message
-                System.out.println("\n" + "=".repeat(50));
-                System.out.println("Override note processing workflow completed!");
-                System.out.println("Your override note has been:");
-                System.out.println("• Validated and stored");
-                System.out.println("• Embedded using OpenAI models");
-                System.out.println("• Analyzed for narrative artifacts");
-                System.out.println("• Connected to campaign knowledge graph");
-                System.out.println("• Marked as override content");
-                System.out.println("=".repeat(50));
-                
-            } else {
-                System.err.println("❌ Failed to store override note. Please try again.");
-                System.err.println("Please check your database connections and try again.");
+            // Perform semantic search (k=2)
+            List<String> noteIds = searchService.searchSemanticklyNotes(query, 2, campaign.getUuid());
+            
+            if (noteIds.isEmpty()) {
+                System.out.println("\n❌ No matching notes found.");
+                System.out.println("Try rephrasing your query or adding more notes to your campaign.");
+                return;
             }
+            
+            // Retrieve full Note objects
+            String collectionName = campaign.getQuadrantCollectionName();
+            List<Note> notes = noteService.getNotesByIds(noteIds, collectionName);
+            
+            if (notes.isEmpty()) {
+                System.err.println("\n❌ Error retrieving note details.");
+                return;
+            }
+            
+            // Display search results
+            System.out.println("\n=== Search Results ===");
+            System.out.println("Found " + notes.size() + " relevant note(s):\n");
+            
+            for (int i = 0; i < notes.size(); i++) {
+                Note note = notes.get(i);
+                String contentPreview = note.getContent().length() > 100 
+                    ? note.getContent().substring(0, 100) + "..." 
+                    : note.getContent();
+                
+                System.out.println((i + 1) + ". " + note.getTitle());
+                System.out.println("   Content: " + contentPreview);
+                System.out.println();
+            }
+            
+            // Allow user to select a note for detailed view
+            System.out.print("Select note (1-" + notes.size() + ") or 0 to return: ");
+            String input = scanner.nextLine().trim();
+            
+            try {
+                int choice = Integer.parseInt(input);
+                if (choice == 0) {
+                    return;
+                }
+                if (choice >= 1 && choice <= notes.size()) {
+                    Note selectedNote = notes.get(choice - 1);
+                    displayFullNote(selectedNote);
+                } else {
+                    System.err.println("Invalid selection.");
+                }
+            } catch (NumberFormatException e) {
+                System.err.println("Please enter a valid number.");
+            }
+            
+        } catch (IllegalArgumentException e) {
+            System.err.println("\n❌ Error: " + e.getMessage());
         } catch (Exception e) {
-            System.err.println("❌ Error processing override note: " + e.getMessage());
-            System.err.println("The system encountered an unexpected error. Please check logs and try again.");
+            System.err.println("\n❌ An error occurred during search: " + e.getMessage());
+            System.err.println("Please check your database connections and try again.");
         }
     }
     
+    /**
+     * Displays full details of a selected note.
+     */
+    private void displayFullNote(Note note) {
+        System.out.println("\n" + "=".repeat(60));
+        System.out.println("=== Note Details ===");
+        System.out.println("=".repeat(60));
+        
+        System.out.println("\nTitle: " + note.getTitle());
+        System.out.println("Created: " + note.getCreatedAt());
+        System.out.println("Updated: " + note.getUpdatedAt());
+        System.out.println("Override: " + (note.isOverride() ? "Yes" : "No"));
+        
+        if (note.isOverride() && note.getOverrideReason() != null) {
+            System.out.println("Override Reason: " + note.getOverrideReason());
+        }
+        
+        if (note.isOverridden()) {
+            System.out.println("Status: ⚠️  This note has been overridden by newer information");
+        }
+        
+        System.out.println("\nContent:");
+        System.out.println("-".repeat(60));
+        System.out.println(note.getContent());
+        System.out.println("-".repeat(60));
+        
+        // Show word count
+        String[] words = note.getContent().trim().split("\\s+");
+        System.out.println("\nWord count: " + words.length + " / 500");
+        
+        System.out.println("\n" + "=".repeat(60));
+        System.out.print("Press Enter to continue...");
+        scanner.nextLine();
+    }
+
     /**
      * Stops the terminal interface.
      */

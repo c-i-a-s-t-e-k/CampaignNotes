@@ -19,6 +19,12 @@ Jesteś ekspertem w programowaniu testów w Javie, Mavenie, JUnit 5 oraz powiąz
 * Do testów warstwy repozytoriów używaj `@DataJpaTest`.
 * Zamiast JUnit 4 Runnerów używaj `@ExtendWith` do rozszerzeń niestandardowych.
 
+**Mockowanie i tagi testów**
+* Preferuj mocki (Mockito) w testach jednostkowych - izoluj testowany kod od zależności (bazy danych, API).
+* Testy z prawdziwymi połączeniami (bazy, API) oznaczaj `@Tag("integration")` na poziomie klasy.
+* Testy jednostkowe: szybkie, bez zewnętrznych zależności, uruchamiane zawsze.
+* Testy integracyjne: z `@Tag("integration")`, uruchamiane przez `./gradlew integrationTest`.
+
 **Dokumentacja API, GRPC**
 * W miarę możliwości używaj dokumentacji GRPC od Quadrand LangfuseAPI etc.
 
