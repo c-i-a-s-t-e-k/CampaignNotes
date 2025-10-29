@@ -1,7 +1,6 @@
 package CampaignNotes;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -11,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import CampaignNotes.database.DatabaseConnectionManager;
 import model.ArtifactCategory;
 
 /**
@@ -19,7 +19,34 @@ import model.ArtifactCategory;
  */
 public class ArtifactCategoryService {
     
-    private static final String DB_PATH = "sqlite.db";
+    private final DatabaseConnectionManager dbConnectionManager;
+    
+    /**
+     * Default constructor for backward compatibility.
+     * Creates its own DatabaseConnectionManager instance.
+     * 
+     * @deprecated Use {@link #ArtifactCategoryService(DatabaseConnectionManager)} instead
+     */
+    @Deprecated
+    public ArtifactCategoryService() {
+        this.dbConnectionManager = new DatabaseConnectionManager();
+    }
+    
+    /**
+     * Constructor with dependency injection.
+     * 
+     * @param dbConnectionManager the database connection manager to use
+     */
+    public ArtifactCategoryService(DatabaseConnectionManager dbConnectionManager) {
+        this.dbConnectionManager = dbConnectionManager;
+    }
+    
+    /**
+     * Gets a connection to the SQLite database.
+     */
+    private Connection getConnection() throws SQLException {
+        return dbConnectionManager.getSqliteRepository().getConnection();
+    }
     
     /**
      * Gets all artifact categories available for a specific campaign.
@@ -37,7 +64,7 @@ public class ArtifactCategoryService {
             ORDER BY ac.name
             """;
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, campaignUuid);
@@ -78,7 +105,7 @@ public class ArtifactCategoryService {
         
         String sql = "INSERT INTO artifact_categories_to_campaigns (campaign_uuid, category_name) VALUES (?, ?)";
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, campaignUuid);
@@ -107,19 +134,14 @@ public class ArtifactCategoryService {
     public boolean removeCategoryFromCampaign(String campaignUuid, String categoryName) {
         String sql = "DELETE FROM artifact_categories_to_campaigns WHERE campaign_uuid = ? AND category_name = ?";
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, campaignUuid);
             pstmt.setString(2, categoryName);
             
             int affectedRows = pstmt.executeUpdate();
-            
-            if (affectedRows > 0) {
-                return true;
-            } else {
-                return false;
-            }
+            return affectedRows > 0;
             
         } catch (SQLException e) {
             System.err.println("Error removing category from campaign: " + e.getMessage());
@@ -136,7 +158,7 @@ public class ArtifactCategoryService {
         List<ArtifactCategory> categories = new ArrayList<>();
         String sql = "SELECT name, description, is_active, created_at FROM artifact_categories ORDER BY name";
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
              ResultSet rs = pstmt.executeQuery()) {
             
@@ -181,7 +203,7 @@ public class ArtifactCategoryService {
         
         String sql = "INSERT INTO artifact_categories (name, description, is_active) VALUES (?, ?, ?)";
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, category.getName());
@@ -219,7 +241,7 @@ public class ArtifactCategoryService {
         
         String sql = "UPDATE artifact_categories SET description = ?, is_active = ? WHERE name = ?";
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, category.getDescription());
@@ -270,7 +292,7 @@ public class ArtifactCategoryService {
     private boolean categoryExists(String categoryName) {
         String sql = "SELECT COUNT(*) FROM artifact_categories WHERE name = ? AND is_active = 1";
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, categoryName);
@@ -298,7 +320,7 @@ public class ArtifactCategoryService {
     private boolean isCategoryAssignedToCampaign(String campaignUuid, String categoryName) {
         String sql = "SELECT COUNT(*) FROM artifact_categories_to_campaigns WHERE campaign_uuid = ? AND category_name = ?";
         
-        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+        try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, campaignUuid);

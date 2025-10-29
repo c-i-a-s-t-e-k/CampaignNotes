@@ -24,15 +24,21 @@ public class TerminalInterface {
     
     /**
      * Constructor initializes the terminal interface with required services.
+     * Uses dependency injection to ensure all services share the same resource instances.
      */
     public TerminalInterface() {
         this.scanner = new Scanner(System.in);
-        this.campaignManager = new CampaignManager();
-        this.noteService = new NoteService();
         
-        // Initialize search service
+        // Initialize shared resources (singleton pattern)
         this.dbConnectionManager = new DatabaseConnectionManager();
         OpenAIEmbeddingService embeddingService = new OpenAIEmbeddingService();
+        CampaignNotes.llm.OpenAILLMService llmService = new CampaignNotes.llm.OpenAILLMService();
+        
+        // Initialize services with proper dependency injection
+        this.campaignManager = new CampaignManager(dbConnectionManager);
+        ArtifactCategoryService categoryService = new ArtifactCategoryService(dbConnectionManager);
+        ArtifactGraphService artifactService = new ArtifactGraphService(llmService, categoryService, dbConnectionManager);
+        this.noteService = new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager);
         this.searchService = new SemantickSearchService(dbConnectionManager, embeddingService);
         
         this.running = false;

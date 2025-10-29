@@ -20,6 +20,15 @@ import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
 import model.Campain;
 
+/**
+ * Legacy database loader.
+ * 
+ * @deprecated Use {@link CampaignNotes.database.DatabaseConnectionManager} instead.
+ *             This class is kept for backward compatibility only.
+ *             New code should use DatabaseConnectionManager which provides better
+ *             separation of concerns and resource management.
+ */
+@Deprecated
 public class DataBaseLoader {
     private static final String DB_PATH = "sqlite.db";
     private Driver neo4jDriver;

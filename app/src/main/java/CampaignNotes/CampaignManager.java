@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
+import CampaignNotes.database.DatabaseConnectionManager;
 import static io.qdrant.client.PointIdFactory.id;
 import io.qdrant.client.QdrantClient;
 import static io.qdrant.client.ValueFactory.value;
@@ -21,13 +22,26 @@ import model.Note;
 public class CampaignManager {
 
     private final Map<String, Campain> campaignsMap = new HashMap<>();
-    private final DataBaseLoader dbLoader;
+    private final DatabaseConnectionManager dbConnectionManager;
     
     /**
      * Constructor that initializes the CampainManager and loads campaign data from the SQLite database.
+     * 
+     * @deprecated Use {@link #CampaignManager(DatabaseConnectionManager)} instead
      */
+    @Deprecated
     public CampaignManager() {
-        dbLoader = new DataBaseLoader();
+        this.dbConnectionManager = new DatabaseConnectionManager();
+        loadCampaignsFromDatabase();
+    }
+    
+    /**
+     * Constructor with dependency injection.
+     * 
+     * @param dbConnectionManager the database connection manager to use
+     */
+    public CampaignManager(DatabaseConnectionManager dbConnectionManager) {
+        this.dbConnectionManager = dbConnectionManager;
         loadCampaignsFromDatabase();
     }
     
@@ -36,7 +50,7 @@ public class CampaignManager {
      */
     private void loadCampaignsFromDatabase() {
         campaignsMap.clear();
-        List<Campain> campaigns = dbLoader.getAllCampaigns();
+        List<Campain> campaigns = dbConnectionManager.getSqliteRepository().getAllCampaigns();
         for (Campain campaign : campaigns) {
             campaignsMap.put(campaign.getUuid(), campaign);
         }
@@ -48,7 +62,7 @@ public class CampaignManager {
      * @return true if both databases are available, false otherwise
      */
     public boolean checkDatabasesAvailability() {
-        return dbLoader.checkDatabasesAvailability();
+        return dbConnectionManager.checkDatabasesAvailability();
     }
 
     /**
@@ -68,12 +82,12 @@ public class CampaignManager {
                     campaignName,
                     sanitizeNeo4jLabel(campaignName + "CampaignLabel" + uuid.toString()),
                     campaignName + "CampaignCollection" + uuid.toString(),
-                    dbLoader.getDefaultUserId(),
+                    dbConnectionManager.getSqliteRepository().getDefaultUserId(),
                     "Campaign created for " + campaignName
             );
 
-            dbLoader.saveCampaignToRelativeDB(newCampain);
-            dbLoader.getQdrantClient().createCollectionAsync(newCampain.getQuadrantCollectionName(),
+            dbConnectionManager.getSqliteRepository().saveCampaignToRelativeDB(newCampain);
+            dbConnectionManager.getQdrantRepository().getClient().createCollectionAsync(newCampain.getQuadrantCollectionName(),
                     VectorParams.newBuilder().setDistance(Distance.Cosine).setSize(3072).build() // OpenAI embeddings dimension
             ).get();    
             
@@ -81,6 +95,7 @@ public class CampaignManager {
             return newCampain;
         } catch (SQLException | ExecutionException | InterruptedException e) {
             System.err.println("Error creating new campaign: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
@@ -98,10 +113,10 @@ public class CampaignManager {
             }
 
             // Delete from Qdrant collection
-            dbLoader.getQdrantClient().deleteCollectionAsync(campaignToDelete.getQuadrantCollectionName()).get();
+            dbConnectionManager.getQdrantRepository().getClient().deleteCollectionAsync(campaignToDelete.getQuadrantCollectionName()).get();
             
             // Delete from database
-            dbLoader.deleteCampaignFromRelativeDB(uuid);
+            dbConnectionManager.getSqliteRepository().deleteCampaignFromRelativeDB(uuid);
             
             // Remove from local map
             campaignsMap.remove(uuid);
@@ -160,7 +175,7 @@ public class CampaignManager {
      */
     public boolean addNoteToCampaign(Note note, Campain campaign, List<Double> embedding) {
         try {
-            QdrantClient qdrantClient = dbLoader.getQdrantClient();
+            QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
             if (qdrantClient == null) {
                 System.err.println("Qdrant client not available");
                 return false;
@@ -187,7 +202,7 @@ public class CampaignManager {
      */
     public boolean hasExistingNotes(Campain campaign) {
         try {
-            QdrantClient qdrantClient = dbLoader.getQdrantClient();
+            QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
             if (qdrantClient == null) {
                 System.err.println("Qdrant client not available");
                 return false;
@@ -297,10 +312,10 @@ public class CampaignManager {
         
         try {
             // Check if databases are available before attempting operations
-            if (dbLoader.checkDatabasesAvailability()) {
+            if (dbConnectionManager.checkDatabasesAvailability()) {
                 
                 // For Qdrant: Wait for any pending asynchronous operations to complete
-                QdrantClient qdrantClient = dbLoader.getQdrantClient();
+                QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
                 if (qdrantClient != null) {
                     try {
                         // Flush any pending operations by checking collection status for all campaigns
@@ -327,9 +342,9 @@ public class CampaignManager {
                 }
                 
                 // For Neo4j: Check if driver is responsive before closing
-                if (dbLoader.getNeo4jDriver() != null) {
+                if (dbConnectionManager.getNeo4jRepository().getDriver() != null) {
                     try {
-                        dbLoader.getNeo4jDriver().verifyConnectivity();
+                        dbConnectionManager.getNeo4jRepository().getDriver().verifyConnectivity();
                     } catch (Exception e) {
                         System.err.println("Neo4j driver verification failed during shutdown: " + e.getMessage());
                         success = false;
@@ -338,7 +353,7 @@ public class CampaignManager {
             }
             
             // Close all database connections
-            dbLoader.closeConnections();
+            dbConnectionManager.closeAll();
             
             // Clear local campaign cache
             campaignsMap.clear();
@@ -350,7 +365,7 @@ public class CampaignManager {
             
             // Even if there was an error, try to close connections
             try {
-                dbLoader.closeConnections();
+                dbConnectionManager.closeAll();
             } catch (Exception closeError) {
                 System.err.println("Error closing connections after failed shutdown: " + closeError.getMessage());
             }

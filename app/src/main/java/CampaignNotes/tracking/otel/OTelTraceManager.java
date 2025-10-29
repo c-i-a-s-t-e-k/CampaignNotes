@@ -33,6 +33,7 @@ import io.opentelemetry.context.Context;
  */
 public class OTelTraceManager {
     
+    private static OTelTraceManager instance;
     private final Tracer tracer;
     
     /**
@@ -42,6 +43,19 @@ public class OTelTraceManager {
      */
     public OTelTraceManager() {
         this.tracer = OpenTelemetryConfig.getTracer();
+    }
+    
+    /**
+     * Gets the singleton instance of OTelTraceManager.
+     * Thread-safe lazy initialization.
+     * 
+     * @return the singleton instance
+     */
+    public static synchronized OTelTraceManager getInstance() {
+        if (instance == null) {
+            instance = new OTelTraceManager();
+        }
+        return instance;
     }
     
     /**

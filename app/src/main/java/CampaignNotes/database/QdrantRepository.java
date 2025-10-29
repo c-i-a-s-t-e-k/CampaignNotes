@@ -23,8 +23,8 @@ public class QdrantRepository {
                 return null;
             }
 
-            String qdrantUrl = dotenv.get("QDRANT_URL");
-            String qdrantPortStr = dotenv.get("QDRANT_GRPC_PORT");
+            String qdrantUrl = dotenv.get("QUADRANT_URL");
+            String qdrantPortStr = dotenv.get("QUADRANT_GRPC_PORT");
 
             if (qdrantUrl == null || qdrantUrl.isEmpty() || qdrantPortStr == null) {
                 System.err.println("Qdrant connection parameters are not properly defined");

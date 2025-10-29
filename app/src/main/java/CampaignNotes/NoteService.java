@@ -33,15 +33,35 @@ public class NoteService {
     
     /**
      * Constructor initializes all required services with OpenTelemetry tracking.
+     * 
+     * @deprecated Use {@link #NoteService(CampaignManager, OpenAIEmbeddingService, ArtifactGraphService, DatabaseConnectionManager)} instead
      */
+    @Deprecated
     public NoteService() {
-        this.campaignManager = new CampaignManager();
-        this.embeddingService = new OpenAIEmbeddingService();
-        
-        // Initialize OpenTelemetry trace manager
-        this.traceManager = new OTelTraceManager();
-        this.artifactService = new ArtifactGraphService();
         this.dbConnectionManager = new DatabaseConnectionManager();
+        this.campaignManager = new CampaignManager(dbConnectionManager);
+        this.embeddingService = new OpenAIEmbeddingService();
+        this.traceManager = OTelTraceManager.getInstance();
+        this.artifactService = new ArtifactGraphService();
+    }
+    
+    /**
+     * Constructor with dependency injection.
+     * 
+     * @param campaignManager the campaign manager to use
+     * @param embeddingService the embedding service to use
+     * @param artifactService the artifact graph service to use
+     * @param dbConnectionManager the database connection manager to use
+     */
+    public NoteService(CampaignManager campaignManager,
+                      OpenAIEmbeddingService embeddingService,
+                      ArtifactGraphService artifactService,
+                      DatabaseConnectionManager dbConnectionManager) {
+        this.campaignManager = campaignManager;
+        this.embeddingService = embeddingService;
+        this.traceManager = OTelTraceManager.getInstance();
+        this.artifactService = artifactService;
+        this.dbConnectionManager = dbConnectionManager;
     }
     
     /**
