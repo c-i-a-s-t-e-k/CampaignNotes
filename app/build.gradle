@@ -124,12 +124,15 @@ task runCreate(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = application.mainClass
     
-    // Read input from terminal_input_create.txt
-    def inputFile = file('../tmp/terminal_input_create.txt')
-    if (inputFile.exists()) {
+    // Check if input file exists before running
+    doFirst {
+        def inputFile = file('../tmp/terminal_input_create.txt')
+        if (!inputFile.exists()) {
+            println "⚠️  Plik wejściowy nie został znaleziony: ${inputFile.absolutePath}"
+            println "⚠️  Akcja zostaje zatrzymana."
+            throw new StopExecutionException("Brak wymaganego pliku wejściowego")
+        }
         standardInput = new FileInputStream(inputFile)
-    } else {
-        throw new GradleException("Input file not found: ${inputFile.absolutePath}")
     }
     
     // Set encoding
@@ -144,12 +147,15 @@ task runAsk(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = application.mainClass
     
-    // Read input from terminal_input_ask.txt
-    def inputFile = file('../tmp/terminal_input_ask.txt')
-    if (inputFile.exists()) {
+    // Check if input file exists before running
+    doFirst {
+        def inputFile = file('../tmp/terminal_input_ask.txt')
+        if (!inputFile.exists()) {
+            println "⚠️  Plik wejściowy nie został znaleziony: ${inputFile.absolutePath}"
+            println "⚠️  Akcja zostaje zatrzymana."
+            throw new StopExecutionException("Brak wymaganego pliku wejściowego")
+        }
         standardInput = new FileInputStream(inputFile)
-    } else {
-        throw new GradleException("Input file not found: ${inputFile.absolutePath}")
     }
     
     // Set encoding
