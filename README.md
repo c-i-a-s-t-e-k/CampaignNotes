@@ -66,8 +66,16 @@ Access your Langfuse dashboard to view:
 # Run the application
 ./gradlew run
 
-# Run tests
+
+#testowanie
+#Uruchomienie tylko UNIT testów
 ./gradlew test
+
+# Uruchom unit testy + integration testy
+./gradlew test integrationTest
+
+# Lub w jednym poleceniu (clean build z wszystkimi testami)
+./gradlew clean build integrationTest
 ```
 
 ## Architecture
