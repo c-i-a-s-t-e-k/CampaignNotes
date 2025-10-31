@@ -20,7 +20,6 @@ import CampaignNotes.dto.NoteCreateRequest;
 import CampaignNotes.dto.NoteCreateResponse;
 import CampaignNotes.dto.NoteDTO;
 import jakarta.validation.Valid;
-import model.ArtifactProcessingResult;
 import model.Campain;
 import model.Note;
 
@@ -82,31 +81,17 @@ public class NoteController {
             Note note = new Note(campaignUuid, request.getTitle(), request.getContent());
             
             // Add note to campaign (this triggers embedding generation and artifact extraction)
-            boolean success = noteService.addNote(note, campaign);
+            NoteCreateResponse response = noteService.addNoteWithResponse(note, campaign);
             
-            if (!success) {
-                LOGGER.error("Failed to add note to campaign");
-                NoteCreateResponse errorResponse = new NoteCreateResponse();
-                errorResponse.setSuccess(false);
-                errorResponse.setMessage("Failed to process and store note");
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+            if (!response.isSuccess()) {
+                LOGGER.error("Failed to add note to campaign: {}", response.getMessage());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
             }
             
-            // Create response with artifact information
-            NoteCreateResponse response = new NoteCreateResponse(
-                note.getId(),
-                note.getTitle(),
-                true,
-                "Note created successfully and artifacts extracted"
-            );
-            
-            // Note: Artifact extraction happens asynchronously during addNote
-            // For now, we'll return a success response without detailed artifact info
-            // In a real implementation, you might want to capture the ArtifactProcessingResult
-            response.setArtifactCount(0); // Placeholder
-            response.setRelationshipCount(0); // Placeholder
-            
-            LOGGER.info("Note created successfully: {}", note.getId());
+            LOGGER.info("Note created successfully: {} with {} artifacts and {} relationships", 
+                       response.getNoteId(), 
+                       response.getArtifactCount(), 
+                       response.getRelationshipCount());
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
             
         } catch (Exception e) {
