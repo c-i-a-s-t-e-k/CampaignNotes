@@ -5,7 +5,7 @@ package CampaignNotes;
 
 
 import CampaignNotes.tracking.otel.OpenTelemetryConfig;
-public class App {
+public class AppTerminal {
 
     public static void main(String[] args) {
         // Initialize OpenTelemetry for tracing

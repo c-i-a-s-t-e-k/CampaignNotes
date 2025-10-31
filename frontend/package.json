@@ -4,8 +4,8 @@
   "private": true,
   "dependencies": {
     "@neo4j-nvl/base": "^1.0.0",
+    "@radix-ui/react-dialog": "^1.0.5",
     "@tanstack/react-query": "^5.62.0",
-    "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
@@ -17,7 +17,6 @@
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.54.2",
     "react-hot-toast": "^2.4.1",
-    "react-scripts": "5.0.1",
     "tailwind-merge": "^2.6.0",
     "zustand": "^5.0.2"
   },
@@ -25,6 +24,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.6",
     "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "husky": "^9.1.7",
@@ -32,18 +32,18 @@
     "postcss": "^8.4.49",
     "prettier": "^3.4.2",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^6.0.1",
+    "vite-tsconfig-paths": "^5.1.4"
   },
   "overrides": {
     "nth-check": "^2.1.1",
-    "postcss": "^8.4.49",
-    "webpack-dev-server": "^5.2.1"
+    "postcss": "^8.4.49"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
+    "start": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
     "prepare": "husky install"
   },
   "lint-staged": {
