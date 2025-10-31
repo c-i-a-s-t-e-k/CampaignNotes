@@ -1,70 +1,159 @@
-# Getting Started with Create React App
+# CampaignNotes - Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Interfejs użytkownika dla aplikacji CampaignNotes - narzędzia dla mistrzów gry RPG do zarządzania kampaniami za pomocą interaktywnej wizualizacji grafu.
 
-## Available Scripts
+## 🚀 Stos Technologiczny
 
-In the project directory, you can run:
+### Core
+- **React 19** - Biblioteka UI
+- **TypeScript 5.7** - Statyczne typowanie (strict mode)
+- **Create React App** - Tooling i konfiguracja
 
-### `npm start`
+### Styling & UI
+- **Tailwind CSS 3.4** - Utility-first CSS framework
+- **Shadcn/ui** - Kolekcja dostępnych komponentów UI
+- **Lucide React** - Biblioteka ikon
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### State Management
+- **Zustand 5** - Globalne zarządzanie stanem aplikacji
+- **TanStack Query 5** - Server state management, cache, synchronizacja
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Data & API
+- **Axios 1.7** - HTTP client z interceptorami
+- **React Hook Form 7** - Zarządzanie formularzami
 
-### `npm test`
+### Visualization
+- **Neo4j NVL** - Biblioteka do wizualizacji grafu kampanii
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Utilities
+- **react-hot-toast** - Powiadomienia użytkownika
+- **clsx + tailwind-merge** - Zarządzanie klasami CSS
 
-### `npm run build`
+## 📦 Wymagania
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- Node.js 18+ (zalecane: 20+)
+- npm 9+ lub yarn 1.22+
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 🛠️ Instalacja
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+1. Zainstaluj zależności:
+```bash
+npm install
+```
 
-### `npm run eject`
+2. Skonfiguruj zmienne środowiskowe (opcjonalne, dla developmentu lokalnego):
+```bash
+cp .env.example .env
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Edytuj `.env` i uzupełnij wartości:
+```env
+REACT_APP_API_URL=http://localhost:8080
+REACT_APP_NEO4J_URI=bolt://localhost:7687
+REACT_APP_NEO4J_USER=neo4j
+REACT_APP_NEO4J_PASSWORD=your-password
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+3. Inicjalizuj Git hooks (automatycznie przy npm install):
+```bash
+npm run prepare
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## 🏃 Uruchamianie
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### Development Mode
+```bash
+npm start
+```
+Otwiera aplikację na [http://localhost:3000](http://localhost:3000).
 
-## Learn More
+Strona automatycznie przeładuje się po zapisaniu zmian. Błędy ESLint pojawią się w konsoli.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Production Build
+```bash
+npm run build
+```
+Buduje zoptymalizowaną wersję produkcyjną do folderu `build/`.
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### Testy
+```bash
+npm test
+```
+Uruchamia testy w trybie watch.
 
-### Code Splitting
+## 📁 Struktura Projektu
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```
+src/
+├── api/              # Klient API, interceptory
+├── assets/           # Statyczne zasoby (obrazy, ikony)
+├── components/       # Komponenty React
+│   └── ui/          # Komponenty Shadcn/ui
+├── hooks/           # Custom hooks (useNeo4jGraph, etc.)
+├── layouts/         # Layouty aplikacji
+├── lib/             # Funkcje pomocnicze
+├── pages/           # Komponenty stron/widoków
+├── stores/          # Zustand stores
+├── types/           # Definicje TypeScript
+├── App.tsx          # Główny komponent
+├── index.tsx        # Entry point
+└── index.css        # Globalne style
+```
 
-### Analyzing the Bundle Size
+Szczegółowy opis struktury dostępny w dokumentacji: [`.ai/frontend_structure.md`](../.ai/frontend_structure.md)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## 🎨 Shadcn/ui Components
 
-### Making a Progressive Web App
+Projekt jest skonfigurowany do pracy z Shadcn/ui. Aby dodać nowy komponent:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```bash
+npx shadcn@latest add button
+npx shadcn@latest add dialog
+# etc.
+```
 
-### Advanced Configuration
+Komponenty zostaną dodane do `src/components/ui/`.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## 🧪 Quality Tools
 
-### Deployment
+Projekt wykorzystuje:
+- **ESLint** - Linting kodu TypeScript/React
+- **Prettier** - Formatowanie kodu
+- **Husky + lint-staged** - Automatyczne formatowanie przy commit
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Pre-commit hook automatycznie:
+1. Uruchamia ESLint z auto-fix
+2. Formatuje kod Prettier
 
-### `npm run build` fails to minify
+## 🎯 Kluczowe Funkcjonalności (Planowane)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- ✅ Podstawowa konfiguracja i struktura
+- ⏳ Wizualizacja grafu kampanii (Neo4j NVL)
+- ⏳ Panel zarządzania kampaniami
+- ⏳ Edytor notatek z walidacją (max 500 słów)
+- ⏳ Asystent AI do wyszukiwania semantycznego
+- ⏳ Potwierdzanie sugestii AI
+- ⏳ Persystencja stanu UI (localStorage)
+- ⏳ Obsługa sesji i autoryzacji
+
+## 🌙 Motyw
+
+Aplikacja domyślnie używa **ciemnego motywu** (dark mode). Struktura CSS jest przygotowana pod łatwe dodanie jasnego motywu w przyszłości.
+
+## 📝 Konwencje Kodu
+
+- **Komponenty**: PascalCase (`CampaignList.tsx`)
+- **Hooks**: camelCase z `use` (`useNeo4jGraph.ts`)
+- **Utils**: camelCase (`formatDate.ts`)
+- **Types**: PascalCase (`Campaign`, `Note`)
+- **Stores**: camelCase + `Store` (`campaignStore.ts`)
+
+## 🔗 Powiązane Dokumenty
+
+- [Plan Rozwoju Frontendu](../.ai/tmp/frontend_plan.md) - Szczegółowy plan funkcjonalności
+- [Struktura Frontendu](../.ai/frontend_structure.md) - Opis modułów i architektury
+- [Product Requirements](../.ai/prd.md) - Wymagania produktowe
+
+## 📄 Licencja
+
+Projekt prywatny - CampaignNotes
