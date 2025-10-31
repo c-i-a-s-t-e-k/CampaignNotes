@@ -4,6 +4,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { SearchResult } from '../types/search';
 
 interface UIStore {
   // Panel states
@@ -14,6 +15,10 @@ interface UIStore {
   // Selected note for detail view
   selectedNoteId: string | null;
   
+  // Search state
+  searchQuery: string;
+  searchResults: SearchResult[];
+  
   // Actions
   toggleCampaignList: () => void;
   toggleSearchPanel: () => void;
@@ -22,6 +27,9 @@ interface UIStore {
   setSearchPanelOpen: (open: boolean) => void;
   setNoteEditorOpen: (open: boolean) => void;
   setSelectedNoteId: (noteId: string | null) => void;
+  setSearchQuery: (query: string) => void;
+  setSearchResults: (results: SearchResult[]) => void;
+  clearSearch: () => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -32,6 +40,8 @@ export const useUIStore = create<UIStore>()(
       isSearchPanelOpen: true,
       isNoteEditorOpen: true,
       selectedNoteId: null,
+      searchQuery: '',
+      searchResults: [],
       
       // Toggle actions
       toggleCampaignList: () =>
@@ -48,6 +58,9 @@ export const useUIStore = create<UIStore>()(
       setSearchPanelOpen: (open) => set({ isSearchPanelOpen: open }),
       setNoteEditorOpen: (open) => set({ isNoteEditorOpen: open }),
       setSelectedNoteId: (noteId) => set({ selectedNoteId: noteId }),
+      setSearchQuery: (query) => set({ searchQuery: query }),
+      setSearchResults: (results) => set({ searchResults: results }),
+      clearSearch: () => set({ searchQuery: '', searchResults: [] }),
     }),
     {
       name: 'ui-storage',

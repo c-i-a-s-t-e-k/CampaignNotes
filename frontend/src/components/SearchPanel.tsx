@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { searchNotes } from '../api';
 import { SearchRequest, SearchResult } from '../types';
@@ -15,8 +15,7 @@ import toast from 'react-hot-toast';
  */
 const SearchPanel: React.FC = () => {
   const { selectedCampaign } = useCampaignStore();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const { searchQuery, searchResults, setSearchQuery, setSearchResults } = useUIStore();
 
   const searchMutation = useMutation({
     mutationFn: (request: SearchRequest) => {
@@ -26,7 +25,7 @@ const SearchPanel: React.FC = () => {
       return searchNotes(selectedCampaign.uuid, request);
     },
     onSuccess: (data) => {
-      setResults(data);
+      setSearchResults(data);
       if (data.length === 0) {
         toast('No results found', { icon: '🔍' });
       }
@@ -34,7 +33,7 @@ const SearchPanel: React.FC = () => {
     onError: (error) => {
       toast.error('Search failed');
       console.error(error);
-      setResults([]);
+      setSearchResults([]);
     },
   });
 
@@ -46,12 +45,12 @@ const SearchPanel: React.FC = () => {
       return;
     }
 
-    if (!query.trim()) {
+    if (!searchQuery.trim()) {
       toast.error('Please enter a search query');
       return;
     }
 
-    searchMutation.mutate({ query: query.trim(), limit: 5 });
+    searchMutation.mutate({ query: searchQuery.trim(), limit: 3 });
   };
 
   if (!selectedCampaign) {
@@ -72,13 +71,13 @@ const SearchPanel: React.FC = () => {
           <div className="flex gap-2">
             <Input
               placeholder="Enter search query..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               disabled={searchMutation.isPending}
             />
             <Button
               type="submit"
-              disabled={searchMutation.isPending || !query.trim()}
+              disabled={searchMutation.isPending || !searchQuery.trim()}
             >
               {searchMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -90,7 +89,7 @@ const SearchPanel: React.FC = () => {
         </form>
       </Card>
 
-      {results.length > 0 && <SearchResults results={results} />}
+      {searchResults.length > 0 && <SearchResults results={searchResults} />}
     </div>
   );
 };
