@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.dto.NoteCreateResponse;
 import CampaignNotes.llm.OpenAIEmbeddingService;
 import CampaignNotes.tracking.otel.OTelEmbeddingObservation;
 import CampaignNotes.tracking.otel.OTelTraceManager;
@@ -78,28 +79,53 @@ public class NoteService {
      * @param campaign the campaign to add the note to
      * @return true if the note was successfully added, false otherwise
      */
+    @Deprecated
     public boolean addNote(Note note, Campain campaign) {
+        NoteCreateResponse response = addNoteWithResponse(note, campaign);
+        return response.isSuccess();
+    }
+    
+    /**
+     * Adds a note to the specified campaign and returns detailed response.
+     * Validates the note, generates embedding, stores it, and processes artifacts.
+     * For override notes, ensures that there are existing notes to override.
+     * 
+     * Uses OpenTelemetry for tracking:
+     * - Creates a trace for the entire workflow
+     * - Creates an observation for the embedding generation
+     * - Automatically reports success/failure status
+     * 
+     * @param note the note to add
+     * @param campaign the campaign to add the note to
+     * @return NoteCreateResponse with success status, note info, and artifact counts
+     */
+    public NoteCreateResponse addNoteWithResponse(Note note, Campain campaign) {
+        // Validation: null checks
         if (note == null || campaign == null) {
-            System.err.println("Note and campaign cannot be null");
-            return false;
+            String error = "Note and campaign cannot be null";
+            System.err.println(error);
+            return createErrorResponse(null, null, error);
         }
         
         // Validate note
         if (!note.isValid()) {
-            System.err.println("Note validation failed: " + note.toString());
-            return false;
+            String error = "Note validation failed: " + note.toString();
+            System.err.println(error);
+            return createErrorResponse(note.getId(), note.getTitle(), "Note validation failed");
         }
         
         // Special validation for override notes
         if (note.isOverride()) {
             if (!campaignManager.hasExistingNotes(campaign)) {
-                System.err.println("Cannot add override note: No existing notes in campaign to override");
-                return false;
+                String error = "Cannot add override note: No existing notes in campaign to override";
+                System.err.println(error);
+                return createErrorResponse(note.getId(), note.getTitle(), error);
             }
             System.out.println("Override note validation passed: Found existing notes in campaign");
         }
         
         long startTime = System.currentTimeMillis();
+        ArtifactProcessingResult artifactResult = null;
         
         // Create trace for the entire note adding workflow
         try (OTelTrace trace = traceManager.createTrace(
@@ -130,52 +156,95 @@ public class NoteService {
                 // Delegate storage to CampaignManager
                 boolean stored = campaignManager.addNoteToCampaign(note, campaign, embeddingResult.getEmbedding());
                 
-                if (stored) {
-                    observation.setSuccess();
-                    
-                    // Add metadata to trace
-                    trace.setAttribute("embedding.size", embeddingResult.getEmbedding().size());
-                    trace.setAttribute("embedding.tokens", embeddingResult.getTokensUsed());
-                    trace.setAttribute("storage.status", "success");
-                    
-                    // Process artifacts after successful storage
-                    try {
-                        ArtifactProcessingResult artifactResult = artifactService.processNoteArtifacts(note, campaign);
-                        
-                        if (artifactResult.isSuccessful()) {
-                            
-                            trace.setAttribute("artifacts.count", artifactResult.getArtifacts().size());
-                            trace.setAttribute("relationships.count", artifactResult.getRelationships().size());
-                        } else {
-                            System.err.println("Artifact processing failed: " + artifactResult.getErrorMessage());
-                            trace.addEvent("artifact_processing_failed");
-                            // Note: We don't return false here because the note was successfully stored
-                        }
-                    } catch (Exception e) {
-                        System.err.println("Error during artifact processing: " + e.getMessage());
-                        trace.recordException(e);
-                        trace.addEvent("artifact_processing_error");
-                    }
-                    
-                    long totalDuration = System.currentTimeMillis() - startTime;
-                    trace.setAttribute("total.duration_ms", totalDuration);
-                    trace.setStatus(true, "Note added successfully");
-                    
-                    return true;
-                } else {
+                if (!stored) {
                     observation.setError("Failed to store note in campaign");
                     trace.setStatus(false, "Failed to store note in campaign");
-                    System.err.println("Failed to store note in campaign");
-                    return false;
+                    String error = "Failed to store note in campaign";
+                    System.err.println(error);
+                    return createErrorResponse(note.getId(), note.getTitle(), error);
                 }
+                
+                observation.setSuccess();
+                
+                // Add metadata to trace
+                trace.setAttribute("embedding.size", embeddingResult.getEmbedding().size());
+                trace.setAttribute("embedding.tokens", embeddingResult.getTokensUsed());
+                trace.setAttribute("storage.status", "success");
+                
+                // Process artifacts after successful storage
+                try {
+                    artifactResult = artifactService.processNoteArtifacts(note, campaign);
+                    
+                    if (artifactResult.isSuccessful()) {
+                        trace.setAttribute("artifacts.count", artifactResult.getArtifacts().size());
+                        trace.setAttribute("relationships.count", artifactResult.getRelationships().size());
+                    } else {
+                        System.err.println("Artifact processing failed: " + artifactResult.getErrorMessage());
+                        trace.addEvent("artifact_processing_failed");
+                        // Note: We don't return error here because the note was successfully stored
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error during artifact processing: " + e.getMessage());
+                    trace.recordException(e);
+                    trace.addEvent("artifact_processing_error");
+                    // Note: We don't return error here because the note was successfully stored
+                }
+                
+                long totalDuration = System.currentTimeMillis() - startTime;
+                trace.setAttribute("total.duration_ms", totalDuration);
+                trace.setStatus(true, "Note added successfully");
+                
+                // Create successful response with artifact information
+                return createSuccessResponse(note, artifactResult);
             }
             
         } catch (Exception e) {
-            String errorMessage = "Error adding note: " + e.getMessage();
-            System.err.println(errorMessage);
+            String errorMessage = "Internal server error: " + e.getMessage();
+            System.err.println("Error adding note: " + e.getMessage());
             System.err.println("Exception details: " + e.getClass().getSimpleName());
-            return false;
+            return createErrorResponse(note.getId(), note.getTitle(), errorMessage);
         }
+    }
+    
+    /**
+     * Creates an error response.
+     */
+    private NoteCreateResponse createErrorResponse(String noteId, String title, String errorMessage) {
+        NoteCreateResponse response = new NoteCreateResponse();
+        response.setNoteId(noteId);
+        response.setTitle(title);
+        response.setSuccess(false);
+        response.setMessage(errorMessage);
+        response.setArtifactCount(0);
+        response.setRelationshipCount(0);
+        return response;
+    }
+    
+    /**
+     * Creates a success response with artifact information.
+     */
+    private NoteCreateResponse createSuccessResponse(Note note, ArtifactProcessingResult artifactResult) {
+        NoteCreateResponse response = new NoteCreateResponse(
+            note.getId(),
+            note.getTitle(),
+            true,
+            "Note created successfully and artifacts extracted"
+        );
+        
+        if (artifactResult != null && artifactResult.isSuccessful()) {
+            response.setArtifactCount(artifactResult.getArtifacts().size());
+            response.setRelationshipCount(artifactResult.getRelationships().size());
+        } else {
+            // Note was stored successfully but artifact processing failed or wasn't performed
+            response.setArtifactCount(0);
+            response.setRelationshipCount(0);
+            if (artifactResult != null && !artifactResult.isSuccessful()) {
+                response.setMessage("Note created successfully but artifact extraction failed: " + 
+                                   artifactResult.getErrorMessage());
+            }
+        }
+        
+        return response;
     }
     
     /**

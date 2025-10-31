@@ -9,6 +9,16 @@
 plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     id 'application'
+    // Spring Boot plugin
+    id 'org.springframework.boot' version '3.2.1'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom 'io.opentelemetry:opentelemetry-bom:1.40.0'
+        mavenBom 'io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha:2.6.0-alpha'
+    }
 }
 
 repositories {
@@ -24,6 +34,10 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.15.2'
     testImplementation 'org.mockito:mockito-junit-jupiter:5.15.2'
 
+    // Spring Boot starters
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    
     // This dependency is used by the application.
     implementation 'com.google.guava:guava:33.4.8-jre'
     
@@ -53,12 +67,12 @@ dependencies {
     implementation 'org.slf4j:slf4j-api:2.0.9'
     implementation 'ch.qos.logback:logback-classic:1.4.11'
     
-    // OpenTelemetry Core
-    implementation 'io.opentelemetry:opentelemetry-api:1.40.0'
-    implementation 'io.opentelemetry:opentelemetry-sdk:1.40.0'
+    // OpenTelemetry Core (wersje zarządzane przez BOM)
+    implementation 'io.opentelemetry:opentelemetry-api'
+    implementation 'io.opentelemetry:opentelemetry-sdk'
     
     // OpenTelemetry OTLP Exporter (HTTP/protobuf dla Langfuse)
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.40.0'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     
     // OpenTelemetry Semantic Conventions
     implementation 'io.opentelemetry.semconv:opentelemetry-semconv:1.25.0-alpha'
@@ -69,9 +83,19 @@ java {
     targetCompatibility = JavaVersion.VERSION_21
 }
 
+// Application plugin - używany dla zadań run (terminal interface)
 application {
-    // Define the main class for the application.
-    mainClass = 'CampaignNotes.App'
+    mainClass = 'CampaignNotes.AppTerminal'
+}
+
+// Spring Boot main class configuration - używany dla bootRun (REST API server)
+springBoot {
+    mainClass = 'CampaignNotes.Application'
+}
+
+// Jawnie ustawiamy mainClass dla bootRun, aby uniknąć konfliktów
+tasks.named('bootRun') {
+    mainClass = 'CampaignNotes.Application'
 }
 
 test {
