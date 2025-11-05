@@ -141,14 +141,10 @@ public class SqliteRepository {
 
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
              PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-            int insertedCount = 0;
             for (String[] category : defaultCategories) {
                 pstmt.setString(1, category[0]);
                 pstmt.setString(2, category[1]);
-                int affected = pstmt.executeUpdate();
-                if (affected > 0) {
-                    insertedCount++;
-                }
+                pstmt.executeUpdate();
             }
         } catch (SQLException e) {
             System.err.println("Error inserting default artifact categories: " + e.getMessage());
@@ -157,7 +153,7 @@ public class SqliteRepository {
 
     public Set<String> loadCampaignIds() {
         Set<String> campaignIds = new HashSet<>();
-        String sql = "SELECT uuid FROM campains";
+        String sql = "SELECT uuid FROM campains WHERE is_active = 1 AND deleted_at IS NULL";
 
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
              PreparedStatement pstmt = conn.prepareStatement(sql);
@@ -174,7 +170,11 @@ public class SqliteRepository {
 
     public List<Campain> getAllCampaigns() {
         List<Campain> campaigns = new ArrayList<>();
-        String sql = "SELECT uuid, name, neo4j_label, quadrant_collection_name FROM campains";
+        String sql = """
+            SELECT uuid, name, neo4j_label, quadrant_collection_name, user_id, description, 
+                   created_at, updated_at, is_active, deleted_at, settings 
+            FROM campains WHERE is_active = 1 AND deleted_at IS NULL
+            """;
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
              PreparedStatement pstmt = conn.prepareStatement(sql);
              ResultSet rs = pstmt.executeQuery()) {
@@ -185,6 +185,20 @@ public class SqliteRepository {
                     rs.getString("neo4j_label"),
                     rs.getString("quadrant_collection_name")
                 );
+                
+                // Set additional fields
+                campaign.setUserId(rs.getString("user_id"));
+                campaign.setDescription(rs.getString("description"));
+                campaign.setCreatedAt(rs.getLong("created_at"));
+                campaign.setUpdatedAt(rs.getLong("updated_at"));
+                campaign.setActive(rs.getBoolean("is_active"));
+                
+                Long deletedAt = rs.getLong("deleted_at");
+                if (!rs.wasNull()) {
+                    campaign.setDeletedAt(deletedAt);
+                }
+                
+                campaign.setSettings(rs.getString("settings"));
                 campaigns.add(campaign);
             }
         } catch (SQLException e) {
@@ -193,19 +207,49 @@ public class SqliteRepository {
         return campaigns;
     }
 
-    public Campain getCampaignById(String uuid) {
-        String sql = "SELECT uuid, name, neo4j_label, quadrant_collection_name FROM campains WHERE uuid = ?";
+    public Campain getCampaignById(String uuid){
+        return getCampaignById(uuid, false);
+    }
+    
+    /**
+     * Gets a campaign by its UUID.
+     * @param uuid The UUID of the campaign to retrieve
+     * @param includeDeleted Whether to include deleted campaigns
+     * @return Campain object or null if not found
+     */
+    public Campain getCampaignById(String uuid, boolean includeDeleted) {
+            String sql = """
+                SELECT uuid, name, neo4j_label, quadrant_collection_name, user_id, description, 
+                    created_at, updated_at, is_active, deleted_at, settings 
+                FROM campains WHERE uuid = ?
+                """ + 
+                (includeDeleted ? "" : " AND is_active = 1 AND deleted_at IS NULL");
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, uuid);
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) {
-                    return new Campain(
+                    Campain campaign = new Campain(
                         rs.getString("uuid"),
                         rs.getString("name"),
                         rs.getString("neo4j_label"),
                         rs.getString("quadrant_collection_name")
                     );
+                    
+                    // Set additional fields
+                    campaign.setUserId(rs.getString("user_id"));
+                    campaign.setDescription(rs.getString("description"));
+                    campaign.setCreatedAt(rs.getLong("created_at"));
+                    campaign.setUpdatedAt(rs.getLong("updated_at"));
+                    campaign.setActive(rs.getBoolean("is_active"));
+                    
+                    Long deletedAt = rs.getLong("deleted_at");
+                    if (!rs.wasNull()) {
+                        campaign.setDeletedAt(deletedAt);
+                    }
+                    
+                    campaign.setSettings(rs.getString("settings"));
+                    return campaign;
                 }
             }
         } catch (SQLException e) {
@@ -265,7 +309,40 @@ public class SqliteRepository {
         }
     }
 
+    /**
+     * Performs soft delete of a campaign by setting is_active = 0 and deleted_at timestamp.
+     * @param uuid The UUID of the campaign to soft delete
+     * @return true if the campaign was successfully soft deleted, false otherwise
+     * @throws SQLException if there is an error executing the SQL query
+     */
     public boolean deleteCampaignFromRelativeDB(String uuid) throws SQLException {
+        String sql = """
+            UPDATE campains 
+            SET is_active = 0, deleted_at = ?, updated_at = ? 
+            WHERE uuid = ? AND is_active = 1
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            long currentTime = System.currentTimeMillis() / 1000L;
+            pstmt.setLong(1, currentTime);
+            pstmt.setLong(2, currentTime);
+            pstmt.setString(3, uuid);
+            
+            int affectedRows = pstmt.executeUpdate();
+            return affectedRows > 0;
+        }
+    }
+    
+    /**
+     * Performs hard delete of a campaign from the database.
+     * This method should only be used for final cleanup after retention period.
+     * @param uuid The UUID of the campaign to hard delete
+     * @return true if the campaign was successfully deleted, false otherwise
+     * @throws SQLException if there is an error executing the SQL query
+     */
+    public boolean hardDeleteCampaignFromRelativeDB(String uuid) throws SQLException {
         String sql = "DELETE FROM campains WHERE uuid = ?";
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -331,6 +408,60 @@ public class SqliteRepository {
         }
         
         return "default-user"; // Fallback to known default
+    }
+    
+    /**
+     * Finds campaigns that have been soft deleted and are past the retention period.
+     * @param retentionDays Number of days to retain soft-deleted campaigns
+     * @return List of campaigns that should be permanently deleted
+     */
+    public List<Campain> findExpiredCampaigns(int retentionDays) {
+        List<Campain> expiredCampaigns = new ArrayList<>();
+        long currentTime = System.currentTimeMillis() / 1000L;
+        long retentionSeconds = retentionDays * 86400L; // Convert days to seconds
+        long cutoffTime = currentTime - retentionSeconds;
+        
+        String sql = """
+            SELECT uuid, name, neo4j_label, quadrant_collection_name, user_id, description, 
+                   created_at, updated_at, is_active, deleted_at, settings 
+            FROM campains 
+            WHERE deleted_at IS NOT NULL AND deleted_at < ?
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setLong(1, cutoffTime);
+            
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    Campain campaign = new Campain(
+                        rs.getString("uuid"),
+                        rs.getString("name"),
+                        rs.getString("neo4j_label"),
+                        rs.getString("quadrant_collection_name")
+                    );
+                    
+                    // Set additional fields
+                    campaign.setUserId(rs.getString("user_id"));
+                    campaign.setDescription(rs.getString("description"));
+                    campaign.setCreatedAt(rs.getLong("created_at"));
+                    campaign.setUpdatedAt(rs.getLong("updated_at"));
+                    campaign.setActive(rs.getBoolean("is_active"));
+                    
+                    Long deletedAt = rs.getLong("deleted_at");
+                    if (!rs.wasNull()) {
+                        campaign.setDeletedAt(deletedAt);
+                    }
+                    
+                    campaign.setSettings(rs.getString("settings"));
+                    expiredCampaigns.add(campaign);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error finding expired campaigns: " + e.getMessage());
+        }
+        
+        return expiredCampaigns;
     }
 }
 
