@@ -1,5 +1,7 @@
 package CampaignNotes.database;
 
+import java.util.Map;
+
 import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
@@ -58,6 +60,48 @@ public class Neo4jRepository {
             return false;
         } catch (Exception e) {
             System.err.println("Error connecting to Neo4j: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Deletes all nodes and relationships from Neo4j for a given campaign UUID.
+     * Performs a hard delete by removing all nodes with matching campaign_uuid property.
+     * 
+     * @param campaignUuid The UUID of the campaign whose data should be deleted
+     * @return true if deletion was successful, false otherwise
+     */
+    public boolean deleteHardCampaignSubgraphById(String campaignUuid) {
+        try {
+            Driver driver = getDriver();
+            if (driver == null) {
+                System.err.println("Neo4j driver not available");
+                return false;
+            }
+
+            try (var session = driver.session()) {
+                return session.executeWrite(tx -> {
+                    try {
+                        // Delete all nodes with matching campaign_uuid and their relationships
+                        String cypher = "MATCH (a) WHERE a.campaign_uuid = $campaignUuid DETACH DELETE a";
+                        
+                        var result = tx.run(cypher, Map.of("campaignUuid", campaignUuid));
+                        var summary = result.consume();
+                        
+                        int nodesDeleted = summary.counters().nodesDeleted();
+                        System.out.println("Deleted " + nodesDeleted + " nodes from Neo4j for campaign UUID: " + campaignUuid);
+                        
+                        return nodesDeleted >= 0; // Return true even if no nodes were found
+                    } catch (Exception e) {
+                        System.err.println("Error deleting campaign subgraph from Neo4j: " + e.getMessage());
+                        e.printStackTrace();
+                        return false;
+                    }
+                });
+            }
+        } catch (Exception e) {
+            System.err.println("Error deleting campaign subgraph from Neo4j: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }

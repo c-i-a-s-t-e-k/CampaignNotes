@@ -33,6 +33,7 @@ public class CampaignManager {
     public CampaignManager() {
         this.dbConnectionManager = new DatabaseConnectionManager();
         loadCampaignsFromDatabase();
+        cleanupExpiredCampaigns(7); // Clean up campaigns soft-deleted more than 7 days ago
     }
     
     /**
@@ -43,6 +44,7 @@ public class CampaignManager {
     public CampaignManager(DatabaseConnectionManager dbConnectionManager) {
         this.dbConnectionManager = dbConnectionManager;
         loadCampaignsFromDatabase();
+        cleanupExpiredCampaigns(7); // Clean up campaigns soft-deleted more than 7 days ago
     }
     
     /**
@@ -101,9 +103,11 @@ public class CampaignManager {
     }
 
     /**
-     * Deletes a campaign with the given UUID from both the local map and databases.
-     * @param uuid The UUID of the campaign to delete
-     * @return true if the campaign was successfully deleted, false otherwise
+     * Performs soft delete of a campaign by marking it as deleted in SQLite.
+     * Does not remove data from Neo4j or Qdrant - these will be cleaned up later
+     * when the retention period expires.
+     * @param uuid The UUID of the campaign to soft delete
+     * @return true if the campaign was successfully soft deleted, false otherwise
      */
     public boolean deleteCampaign(String uuid) {
         try {
@@ -112,21 +116,116 @@ public class CampaignManager {
                 return false;
             }
 
-            // Delete from Qdrant collection
-            dbConnectionManager.getQdrantRepository().getClient().deleteCollectionAsync(campaignToDelete.getQuadrantCollectionName()).get();
+            // Soft delete from SQLite
+            boolean success = dbConnectionManager.getSqliteRepository().deleteCampaignFromRelativeDB(uuid);
             
-            // Delete from database
-            dbConnectionManager.getSqliteRepository().deleteCampaignFromRelativeDB(uuid);
+            // Remove from local map only if soft delete succeeded
+            if (success) {
+                campaignsMap.remove(uuid);
+            }
             
-            // Remove from local map
-            campaignsMap.remove(uuid);
-            
-            return true;
+            return success;
         } catch (Exception e) {
             System.err.println("Error deleting campaign: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
+
+    /**
+     * Performs hard delete of a campaign from all databases (Neo4j, Qdrant, SQLite).
+     * This method should only be used for final cleanup after retention period.
+     * @param uuid The UUID of the campaign to hard delete
+     * @return true if the campaign was successfully deleted from all databases, false otherwise
+     */
+    private boolean hardDeleteCampaign(String uuid) {
+        try {
+            Campain campaignToDelete = campaignsMap.get(uuid);
+            if (campaignToDelete == null) {
+                // Try to get campaign from database
+                campaignToDelete = dbConnectionManager.getSqliteRepository().getCampaignById(uuid, true);
+            }
+            
+            if (campaignToDelete == null) {
+                System.err.println("Campaign not found for hard delete: " + uuid);
+                return false;
+            }
+
+            boolean neo4jSuccess = true;
+            boolean qdrantSuccess = true;
+            boolean sqliteSuccess = true;
+
+            // Delete from Neo4j
+            neo4jSuccess = dbConnectionManager.getNeo4jRepository().deleteHardCampaignSubgraphById(campaignToDelete.getUuid());
+
+            // Delete from Qdrant
+            try {
+                QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
+                if (qdrantClient != null) {
+                    qdrantClient.deleteCollectionAsync(campaignToDelete.getQuadrantCollectionName()).get();
+                }
+            } catch (Exception e) {
+                System.err.println("Error deleting Qdrant collection: " + e.getMessage());
+                qdrantSuccess = false;
+            }
+
+            // Hard delete from SQLite
+            try {
+                sqliteSuccess = dbConnectionManager.getSqliteRepository().hardDeleteCampaignFromRelativeDB(uuid);
+            } catch (SQLException e) {
+                System.err.println("Error hard deleting campaign from SQLite: " + e.getMessage());
+                sqliteSuccess = false;
+            }
+
+            // Remove from local map if SQLite deletion succeeded
+            if (sqliteSuccess) {
+                campaignsMap.remove(uuid);
+            }
+
+            return neo4jSuccess && qdrantSuccess && sqliteSuccess;
+        } catch (Exception e) {
+            System.err.println("Error performing hard delete campaign: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Cleans up campaigns that have been soft deleted and are past the retention period.
+     * Removes them permanently from Neo4j, Qdrant, and SQLite.
+     * @param retentionDays Number of days to retain soft-deleted campaigns
+     */
+    public void cleanupExpiredCampaigns(int retentionDays) {
+        try {
+            List<Campain> expiredCampaigns = dbConnectionManager.getSqliteRepository().findExpiredCampaigns(retentionDays);
+            
+            if (expiredCampaigns.isEmpty()) {
+                System.out.println("No expired campaigns to clean up");
+                return;
+            }
+
+            System.out.println("Found " + expiredCampaigns.size() + " expired campaign(s) to clean up");
+            
+            int successCount = 0;
+            int failureCount = 0;
+            
+            for (Campain campaign : expiredCampaigns) {
+                System.out.println("Hard deleting expired campaign: " + campaign.getName() + " (UUID: " + campaign.getUuid() + ")");
+                boolean success = hardDeleteCampaign(campaign.getUuid());
+                if (success) {
+                    successCount++;
+                } else {
+                    failureCount++;
+                }
+            }
+            
+            System.out.println("Cleanup completed: " + successCount + " successful, " + failureCount + " failed");
+        } catch (Exception e) {
+            System.err.println("Error cleaning up expired campaigns: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
     
     /**
      * Gets all campaigns as a list.
