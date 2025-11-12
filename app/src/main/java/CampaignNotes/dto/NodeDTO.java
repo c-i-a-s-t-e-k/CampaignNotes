@@ -1,5 +1,8 @@
 package CampaignNotes.dto;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * DTO representing a node in the campaign graph.
  */
@@ -9,17 +12,19 @@ public class NodeDTO {
     private String type;
     private String description;
     private String campaignUuid;
-    private String noteId;
+    private List<String> noteIds;
     
-    public NodeDTO() {}
+    public NodeDTO() {
+        this.noteIds = new ArrayList<>();
+    }
     
-    public NodeDTO(String id, String name, String type, String description, String campaignUuid, String noteId) {
+    public NodeDTO(String id, String name, String type, String description, String campaignUuid, List<String> noteIds) {
         this.id = id;
         this.name = name;
         this.type = type;
         this.description = description;
         this.campaignUuid = campaignUuid;
-        this.noteId = noteId;
+        this.noteIds = noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
     }
     
     public String getId() {
@@ -62,12 +67,12 @@ public class NodeDTO {
         this.campaignUuid = campaignUuid;
     }
     
-    public String getNoteId() {
-        return noteId;
+    public List<String> getNoteIds() {
+        return noteIds != null ? noteIds : new ArrayList<>();
     }
     
-    public void setNoteId(String noteId) {
-        this.noteId = noteId;
+    public void setNoteIds(List<String> noteIds) {
+        this.noteIds = noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
     }
 }
 

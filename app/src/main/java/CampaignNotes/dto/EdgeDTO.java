@@ -1,5 +1,8 @@
 package CampaignNotes.dto;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * DTO representing an edge (relationship) in the campaign graph.
  */
@@ -10,8 +13,11 @@ public class EdgeDTO {
     private String label;
     private String description;
     private String reasoning;
+    private List<String> noteIds;
     
-    public EdgeDTO() {}
+    public EdgeDTO() {
+        this.noteIds = new ArrayList<>();
+    }
     
     public EdgeDTO(String id, String source, String target, String label, String description, String reasoning) {
         this.id = id;
@@ -20,6 +26,17 @@ public class EdgeDTO {
         this.label = label;
         this.description = description;
         this.reasoning = reasoning;
+        this.noteIds = new ArrayList<>();
+    }
+    
+    public EdgeDTO(String id, String source, String target, String label, String description, String reasoning, List<String> noteIds) {
+        this.id = id;
+        this.source = source;
+        this.target = target;
+        this.label = label;
+        this.description = description;
+        this.reasoning = reasoning;
+        this.noteIds = noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
     }
     
     public String getId() {
@@ -68,6 +85,14 @@ public class EdgeDTO {
     
     public void setReasoning(String reasoning) {
         this.reasoning = reasoning;
+    }
+    
+    public List<String> getNoteIds() {
+        return noteIds != null ? noteIds : new ArrayList<>();
+    }
+    
+    public void setNoteIds(List<String> noteIds) {
+        this.noteIds = noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
     }
 }
 

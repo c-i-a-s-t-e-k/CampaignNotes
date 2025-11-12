@@ -352,10 +352,19 @@ public class ArtifactGraphService {
                     try {
                         // Create artifacts as nodes
                         for (Artifact artifact : artifacts) {
+                            List<String> noteIds = artifact.getNoteIds();
+                            if (noteIds.isEmpty()) {
+                                continue; // Skip artifacts without note IDs
+                            }
+                            
                             String cypher = String.format(
                                 "MERGE (a:%s {name: $name, campaign_uuid: $campaign_uuid}) " +
-                                "SET a.type = $type, a.description = $description, a.note_id = $note_id, " +
-                                "a.created_at = datetime(), a.id = $id",
+                                "SET a.type = $type, a.description = $description, " +
+                                "a.note_ids = CASE " +
+                                "  WHEN a.note_ids IS NULL THEN $note_ids " +
+                                "  ELSE [n IN (a.note_ids + $note_ids) WHERE NOT n IN a.note_ids | n] + a.note_ids " +
+                                "END, " +
+                                "a.created_at = COALESCE(a.created_at, datetime()), a.id = $id",
                                 sanitizeNeo4jLabel(campaign.getNeo4jLabel()) + "_Artifact"
                             );
                             
@@ -364,7 +373,7 @@ public class ArtifactGraphService {
                                 "campaign_uuid", artifact.getCampaignUuid(),
                                 "type", artifact.getType(),
                                 "description", artifact.getDescription() != null ? artifact.getDescription() : "",
-                                "note_id", artifact.getNoteId(),
+                                "note_ids", noteIds,
                                 "id", artifact.getId()
                             );
                             
@@ -373,12 +382,21 @@ public class ArtifactGraphService {
                         
                         // Create relationships
                         for (Relationship relationship : relationships) {
+                            List<String> noteIds = relationship.getNoteIds();
+                            if (noteIds.isEmpty()) {
+                                continue; // Skip relationships without note IDs
+                            }
+                            
                             String cypher = String.format(
                                 "MATCH (a1:%s_Artifact {name: $source_name, campaign_uuid: $campaign_uuid}) " +
                                 "MATCH (a2:%s_Artifact {name: $target_name, campaign_uuid: $campaign_uuid}) " +
                                 "MERGE (a1)-[r:%s {label: $label}]->(a2) " +
                                 "SET r.description = $description, r.reasoning = $reasoning, " +
-                                "r.note_id = $note_id, r.created_at = datetime(), r.id = $id",
+                                "r.note_ids = CASE " +
+                                "  WHEN r.note_ids IS NULL THEN $note_ids " +
+                                "  ELSE [n IN (r.note_ids + $note_ids) WHERE NOT n IN r.note_ids | n] + r.note_ids " +
+                                "END, " +
+                                "r.created_at = COALESCE(r.created_at, datetime()), r.id = $id",
                                 sanitizeNeo4jLabel(campaign.getNeo4jLabel()), sanitizeNeo4jLabel(campaign.getNeo4jLabel()), 
                                 sanitizeRelationshipType(relationship.getLabel())
                             );
@@ -390,7 +408,7 @@ public class ArtifactGraphService {
                                 "label", relationship.getLabel(),
                                 "description", relationship.getDescription() != null ? relationship.getDescription() : "",
                                 "reasoning", relationship.getReasoning() != null ? relationship.getReasoning() : "",
-                                "note_id", relationship.getNoteId(),
+                                "note_ids", noteIds,
                                 "id", relationship.getId()
                             );
                             

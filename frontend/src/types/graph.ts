@@ -8,7 +8,7 @@ export interface Node {
   type: string;
   description?: string;
   campaignUuid: string;
-  noteId?: string;
+  noteIds?: string[];
 }
 
 export interface Edge {
@@ -18,6 +18,7 @@ export interface Edge {
   label: string;
   description?: string;
   reasoning?: string;
+  noteIds?: string[];
 }
 
 export interface Graph {

@@ -2,6 +2,8 @@ package model;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -17,7 +19,7 @@ public class Relationship implements Serializable {
     private String label;
     private String description;
     private String reasoning;
-    private String noteId;
+    private List<String> noteIds;
     private String campaignUuid;
     private LocalDateTime createdAt;
     
@@ -27,6 +29,7 @@ public class Relationship implements Serializable {
     public Relationship() {
         this.id = UUID.randomUUID().toString();
         this.createdAt = LocalDateTime.now();
+        this.noteIds = new ArrayList<>();
     }
     
     /**
@@ -37,7 +40,9 @@ public class Relationship implements Serializable {
         this.sourceArtifactName = sourceArtifactName;
         this.targetArtifactName = targetArtifactName;
         this.label = label;
-        this.noteId = noteId;
+        if (noteId != null && !noteId.trim().isEmpty()) {
+            this.noteIds.add(noteId);
+        }
         this.campaignUuid = campaignUuid;
     }
     
@@ -49,6 +54,21 @@ public class Relationship implements Serializable {
         this(sourceArtifactName, targetArtifactName, label, noteId, campaignUuid);
         this.description = description;
         this.reasoning = reasoning;
+    }
+    
+    /**
+     * Constructor with list of note IDs
+     */
+    public Relationship(String sourceArtifactName, String targetArtifactName, String label,
+                       String description, String reasoning, List<String> noteIds, String campaignUuid) {
+        this();
+        this.sourceArtifactName = sourceArtifactName;
+        this.targetArtifactName = targetArtifactName;
+        this.label = label;
+        this.description = description;
+        this.reasoning = reasoning;
+        this.noteIds = noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
+        this.campaignUuid = campaignUuid;
     }
     
     // Getters and setters
@@ -100,12 +120,37 @@ public class Relationship implements Serializable {
         this.reasoning = reasoning;
     }
     
-    public String getNoteId() {
-        return noteId;
+    public List<String> getNoteIds() {
+        return noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
     }
     
-    public void setNoteId(String noteId) {
-        this.noteId = noteId;
+    public void setNoteIds(List<String> noteIds) {
+        this.noteIds = noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
+    }
+    
+    /**
+     * Adds a note ID to the list if it doesn't already exist.
+     * @param noteId the note ID to add
+     */
+    public void addNoteId(String noteId) {
+        if (noteId != null && !noteId.trim().isEmpty()) {
+            if (this.noteIds == null) {
+                this.noteIds = new ArrayList<>();
+            }
+            if (!this.noteIds.contains(noteId)) {
+                this.noteIds.add(noteId);
+            }
+        }
+    }
+    
+    /**
+     * Removes a note ID from the list.
+     * @param noteId the note ID to remove
+     */
+    public void removeNoteId(String noteId) {
+        if (this.noteIds != null && noteId != null) {
+            this.noteIds.remove(noteId);
+        }
     }
     
     public String getCampaignUuid() {
@@ -132,15 +177,15 @@ public class Relationship implements Serializable {
         return sourceArtifactName != null && !sourceArtifactName.trim().isEmpty() &&
                targetArtifactName != null && !targetArtifactName.trim().isEmpty() &&
                label != null && !label.trim().isEmpty() &&
-               noteId != null && !noteId.trim().isEmpty() &&
+               noteIds != null && !noteIds.isEmpty() &&
                campaignUuid != null && !campaignUuid.trim().isEmpty() &&
                !sourceArtifactName.equals(targetArtifactName); // Prevent self-relationships
     }
     
     @Override
     public String toString() {
-        return String.format("Relationship[%s --%s--> %s] (from note: %s)", 
-                sourceArtifactName, label, targetArtifactName, noteId);
+        return String.format("Relationship[%s --%s--> %s] (from notes: %s)", 
+                sourceArtifactName, label, targetArtifactName, noteIds);
     }
     
     @Override
