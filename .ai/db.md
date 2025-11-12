@@ -401,7 +401,7 @@ Każdy artefakt jest reprezentowany jako węzeł z następującymi właściwośc
 - `name` (String) - Nazwa artefaktu
 - `type` (String) - Typ artefaktu (characters, locations, items, events)
 - `campaignUuid` (String) - UUID kampanii
-- `noteId` (String) - Identyfikator notatki źródłowej
+- `note_ids` (List<String>) - Lista identyfikatorów notatek źródłowych (może zawierać wiele notatek)
 - `description` (String) - Opis artefaktu
 - `createdAt` (LocalDateTime) - Data utworzenia
 
@@ -413,13 +413,14 @@ Relacje między artefaktami są reprezentowane jako krawędzie grafu:
 - `label` (String) - Etykieta relacji (sanityzowana)
 - `description` (String) - Opis relacji
 - `reasoning` (String) - Uzasadnienie relacji
-- `noteId` (String) - Identyfikator notatki źródłowej
+- `note_ids` (List<String>) - Lista identyfikatorów notatek źródłowych (może zawierać wiele notatek)
 - `campaignUuid` (String) - UUID kampanii
 - `createdAt` (LocalDateTime) - Data utworzenia
 
 Powiązania z SQLite/Qdrant:
 - `artifact_uuid` w SQLite (`artifact_notes`) wskazuje na węzeł artefaktu w Neo4j
 - Synchronizacja jest śledzona w `campaign_notes` (statusy `neo4j_sync_status`)
+- Właściwość `note_ids` w Neo4j może zawierać wiele identyfikatorów notatek, co odpowiada relacji N:M w tabeli `artifact_notes` w SQLite
 
 ### Izolacja Danych
 Każda kampania ma własną etykietę węzłów, co zapewnia izolację danych między różnymi kampaniami w tej samej instancji Neo4j.

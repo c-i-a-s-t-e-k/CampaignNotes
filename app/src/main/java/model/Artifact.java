@@ -2,6 +2,8 @@ package model;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -15,7 +17,7 @@ public class Artifact implements Serializable {
     private String name;
     private String type;
     private String campaignUuid;
-    private String noteId;
+    private List<String> noteIds;
     private String description;
     private LocalDateTime createdAt;
     
@@ -25,6 +27,7 @@ public class Artifact implements Serializable {
     public Artifact() {
         this.id = UUID.randomUUID().toString();
         this.createdAt = LocalDateTime.now();
+        this.noteIds = new ArrayList<>();
     }
     
     /**
@@ -35,7 +38,9 @@ public class Artifact implements Serializable {
         this.name = name;
         this.type = type;
         this.campaignUuid = campaignUuid;
-        this.noteId = noteId;
+        if (noteId != null && !noteId.trim().isEmpty()) {
+            this.noteIds.add(noteId);
+        }
     }
     
     /**
@@ -43,6 +48,18 @@ public class Artifact implements Serializable {
      */
     public Artifact(String name, String type, String campaignUuid, String noteId, String description) {
         this(name, type, campaignUuid, noteId);
+        this.description = description;
+    }
+    
+    /**
+     * Constructor with list of note IDs
+     */
+    public Artifact(String name, String type, String campaignUuid, List<String> noteIds, String description) {
+        this();
+        this.name = name;
+        this.type = type;
+        this.campaignUuid = campaignUuid;
+        this.noteIds = noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
         this.description = description;
     }
     
@@ -79,12 +96,37 @@ public class Artifact implements Serializable {
         this.campaignUuid = campaignUuid;
     }
     
-    public String getNoteId() {
-        return noteId;
+    public List<String> getNoteIds() {
+        return noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
     }
     
-    public void setNoteId(String noteId) {
-        this.noteId = noteId;
+    public void setNoteIds(List<String> noteIds) {
+        this.noteIds = noteIds != null ? new ArrayList<>(noteIds) : new ArrayList<>();
+    }
+    
+    /**
+     * Adds a note ID to the list if it doesn't already exist.
+     * @param noteId the note ID to add
+     */
+    public void addNoteId(String noteId) {
+        if (noteId != null && !noteId.trim().isEmpty()) {
+            if (this.noteIds == null) {
+                this.noteIds = new ArrayList<>();
+            }
+            if (!this.noteIds.contains(noteId)) {
+                this.noteIds.add(noteId);
+            }
+        }
+    }
+    
+    /**
+     * Removes a note ID from the list.
+     * @param noteId the note ID to remove
+     */
+    public void removeNoteId(String noteId) {
+        if (this.noteIds != null && noteId != null) {
+            this.noteIds.remove(noteId);
+        }
     }
     
     public String getDescription() {
@@ -111,13 +153,13 @@ public class Artifact implements Serializable {
         return name != null && !name.trim().isEmpty() &&
                type != null && !type.trim().isEmpty() &&
                campaignUuid != null && !campaignUuid.trim().isEmpty() &&
-               noteId != null && !noteId.trim().isEmpty();
+               noteIds != null && !noteIds.isEmpty();
     }
     
     @Override
     public String toString() {
-        return String.format("Artifact[id=%s, name='%s', type='%s', campaign=%s, note=%s]", 
-                id, name, type, campaignUuid, noteId);
+        return String.format("Artifact[id=%s, name='%s', type='%s', campaign=%s, notes=%s]", 
+                id, name, type, campaignUuid, noteIds);
     }
     
     @Override

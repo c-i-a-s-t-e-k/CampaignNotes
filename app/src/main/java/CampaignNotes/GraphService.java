@@ -1,6 +1,8 @@
 package CampaignNotes;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.neo4j.driver.Driver;
@@ -144,9 +146,24 @@ public class GraphService {
         String type = node.get("type").asString("");
         String description = node.get("description").asString("");
         String campaignUuid = node.get("campaign_uuid").asString("");
-        String noteId = node.get("note_id").asString("");
         
-        NodeDTO nodeDTO = new NodeDTO(id, name, type, description, campaignUuid, noteId);
+        // Read note_ids (new format) with backward compatibility for note_id (old format)
+        List<String> noteIds = new ArrayList<>();
+        if (node.containsKey("note_ids")) {
+            // New format: list of note IDs
+            Value noteIdsValue = node.get("note_ids");
+            if (!noteIdsValue.isNull()) {
+                noteIds = noteIdsValue.asList(Value::asString);
+            }
+        } else if (node.containsKey("note_id")) {
+            // Backward compatibility: single note ID
+            String oldNoteId = node.get("note_id").asString("");
+            if (!oldNoteId.isEmpty()) {
+                noteIds.add(oldNoteId);
+            }
+        }
+        
+        NodeDTO nodeDTO = new NodeDTO(id, name, type, description, campaignUuid, noteIds);
         graph.addNode(nodeDTO);
         
         processedNodes.put(internalId, id);
@@ -183,7 +200,23 @@ public class GraphService {
         String description = rel.get("description").asString("");
         String reasoning = rel.get("reasoning").asString("");
         
-        EdgeDTO edgeDTO = new EdgeDTO(id, sourceId, targetId, label, description, reasoning);
+        // Read note_ids (new format) with backward compatibility for note_id (old format)
+        List<String> noteIds = new ArrayList<>();
+        if (rel.containsKey("note_ids")) {
+            // New format: list of note IDs
+            Value noteIdsValue = rel.get("note_ids");
+            if (!noteIdsValue.isNull()) {
+                noteIds = noteIdsValue.asList(Value::asString);
+            }
+        } else if (rel.containsKey("note_id")) {
+            // Backward compatibility: single note ID
+            String oldNoteId = rel.get("note_id").asString("");
+            if (!oldNoteId.isEmpty()) {
+                noteIds.add(oldNoteId);
+            }
+        }
+        
+        EdgeDTO edgeDTO = new EdgeDTO(id, sourceId, targetId, label, description, reasoning, noteIds);
         graph.addEdge(edgeDTO);
     }
 }

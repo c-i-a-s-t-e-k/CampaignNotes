@@ -80,6 +80,10 @@ class DeleteCampaignUNITest {
         when(mockQdrantClient.createCollectionAsync(anyString(), any(VectorParams.class)))
             .thenReturn(createCollectionFuture);
         
+        // Mock findExpiredCampaigns to return empty list for constructor call
+        // CampaignManager constructor calls cleanupExpiredCampaigns(7) during initialization
+        when(mockSqliteRepository.findExpiredCampaigns(7)).thenReturn(new ArrayList<>());
+        
         // Initialize CampaignManager with mocked dependencies
         campaignManager = new CampaignManager(mockDbConnectionManager);
     }
@@ -293,7 +297,8 @@ class DeleteCampaignUNITest {
             campaignManager.cleanupExpiredCampaigns(7);
             
             // Assert
-            verify(mockSqliteRepository, times(1)).findExpiredCampaigns(7);
+            // Constructor calls cleanupExpiredCampaigns(7) once, test calls it again = 2 times total
+            verify(mockSqliteRepository, times(2)).findExpiredCampaigns(7);
             verify(mockNeo4jRepository, never()).deleteHardCampaignSubgraphById(anyString());
             verify(mockQdrantClient, never()).deleteCollectionAsync(anyString());
             verify(mockSqliteRepository, never()).hardDeleteCampaignFromRelativeDB(anyString());
@@ -326,7 +331,8 @@ class DeleteCampaignUNITest {
             campaignManager.cleanupExpiredCampaigns(7);
             
             // Assert
-            verify(mockSqliteRepository, times(1)).findExpiredCampaigns(7);
+            // Constructor calls cleanupExpiredCampaigns(7) once, test calls it again = 2 times total
+            verify(mockSqliteRepository, times(2)).findExpiredCampaigns(7);
             verify(mockSqliteRepository, times(1)).getCampaignById(campaignUuid, true);
             verify(mockNeo4jRepository, times(1)).deleteHardCampaignSubgraphById(campaignUuid);
             verify(mockQdrantClient, times(1)).deleteCollectionAsync(expiredCampaign.getQuadrantCollectionName());
@@ -364,7 +370,8 @@ class DeleteCampaignUNITest {
             campaignManager.cleanupExpiredCampaigns(7);
             
             // Assert
-            verify(mockSqliteRepository, times(1)).findExpiredCampaigns(7);
+            // Constructor calls cleanupExpiredCampaigns(7) once, test calls it again = 2 times total
+            verify(mockSqliteRepository, times(2)).findExpiredCampaigns(7);
             verify(mockSqliteRepository, times(3)).getCampaignById(anyString(), eq(true));
             verify(mockNeo4jRepository, times(3)).deleteHardCampaignSubgraphById(anyString());
             verify(mockQdrantClient, times(3)).deleteCollectionAsync(anyString());
@@ -403,7 +410,8 @@ class DeleteCampaignUNITest {
             campaignManager.cleanupExpiredCampaigns(7);
             
             // Assert - both campaigns should be attempted
-            verify(mockSqliteRepository, times(1)).findExpiredCampaigns(7);
+            // Constructor calls cleanupExpiredCampaigns(7) once, test calls it again = 2 times total
+            verify(mockSqliteRepository, times(2)).findExpiredCampaigns(7);
             verify(mockNeo4jRepository, times(2)).deleteHardCampaignSubgraphById(anyString());
             verify(mockQdrantClient, times(2)).deleteCollectionAsync(anyString());
             verify(mockSqliteRepository, times(2)).hardDeleteCampaignFromRelativeDB(anyString());

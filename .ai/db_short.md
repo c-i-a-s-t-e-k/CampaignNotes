@@ -29,8 +29,8 @@
 - **Env**: `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`
 - **Repo**: `CampaignNotes/database/Neo4jRepository.java`
 - **Izolacja danych**: etykieta węzła `{CampaignLabel}_Artifact` (sanityzowana)
-- **Węzły – properties**: `id`, `name`, `type`, `campaignUuid`, `noteId`, `description`, `createdAt`
-- **Relacje – properties**: `id`, `label`, `description`, `reasoning`, `noteId`, `campaignUuid`, `createdAt`
+- **Węzły – properties**: `id`, `name`, `type`, `campaignUuid`, `note_ids` (List<String>), `description`, `createdAt`
+- **Relacje – properties**: `id`, `label`, `description`, `reasoning`, `note_ids` (List<String>), `campaignUuid`, `createdAt`
 - **Integracje**: `artifact_notes.artifact_uuid` (SQLite) ↔ węzły w Neo4j; statusy sync w `campaign_notes.neo4j_sync_status`.
 
 ## Qdrant (wektory notatek)
