@@ -11,7 +11,12 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.deduplication.CandidateFinder;
+import CampaignNotes.deduplication.DeduplicationCoordinator;
+import CampaignNotes.deduplication.DeduplicationLLMService;
+import CampaignNotes.dto.deduplication.MergeProposal;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.LangfuseClient;
 import CampaignNotes.tracking.otel.OTelGenerationObservation;
@@ -20,6 +25,7 @@ import CampaignNotes.tracking.otel.OTelTraceManager.OTelTrace;
 import model.Artifact;
 import model.ArtifactProcessingResult;
 import model.Campain;
+import model.DeduplicationResult;
 import model.LLMResponse;
 import model.Note;
 import model.PromptContent;
@@ -36,6 +42,8 @@ public class ArtifactGraphService {
     private final OTelTraceManager traceManager;
     private final ArtifactCategoryService categoryService;
     private final DatabaseConnectionManager dbConnectionManager;
+    private final GraphEmbeddingService graphEmbeddingService;
+    private final DeduplicationConfig deduplicationConfig;
     private final Gson gson;
     
     // Timeout for the entire workflow (1 minute as per PRD)
@@ -57,6 +65,8 @@ public class ArtifactGraphService {
         this.traceManager = OTelTraceManager.getInstance();
         this.categoryService = new ArtifactCategoryService();
         this.dbConnectionManager = new DatabaseConnectionManager();
+        this.graphEmbeddingService = new GraphEmbeddingService(llmService, dbConnectionManager);
+        this.deduplicationConfig = new DeduplicationConfig();
         this.gson = new Gson();
     }
     
@@ -66,15 +76,21 @@ public class ArtifactGraphService {
      * @param llmService the LLM service to use
      * @param categoryService the artifact category service to use
      * @param dbConnectionManager the database connection manager to use
+     * @param graphEmbeddingService the graph embedding service for deduplication
+     * @param deduplicationConfig the deduplication configuration
      */
     public ArtifactGraphService(OpenAILLMService llmService, 
                                ArtifactCategoryService categoryService, 
-                               DatabaseConnectionManager dbConnectionManager) {
+                               DatabaseConnectionManager dbConnectionManager,
+                               GraphEmbeddingService graphEmbeddingService,
+                               DeduplicationConfig deduplicationConfig) {
         this.llmService = llmService;
         this.langfuseClient = LangfuseClient.getInstance();
         this.traceManager = OTelTraceManager.getInstance();
         this.categoryService = categoryService;
         this.dbConnectionManager = dbConnectionManager;
+        this.graphEmbeddingService = graphEmbeddingService;
+        this.deduplicationConfig = deduplicationConfig;
         this.gson = new Gson();
     }
     

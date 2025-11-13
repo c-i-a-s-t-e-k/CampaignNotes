@@ -355,6 +355,7 @@ public class CampaignManager {
                     .putPayload("updated_at", value(note.getUpdatedAt().toString()))
                     .putPayload("is_override", value(note.isOverride()))
                     .putPayload("is_overridden", value(note.isOverridden()))
+                    .putPayload("type", value("note"))  // Type tag for filtering in Phase 1
                     .build();
             
             // Add override reason if present
