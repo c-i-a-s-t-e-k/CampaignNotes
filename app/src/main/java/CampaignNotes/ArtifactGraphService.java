@@ -13,6 +13,7 @@ import com.google.gson.JsonParser;
 
 import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.database.Neo4jRepository;
 import CampaignNotes.deduplication.CandidateFinder;
 import CampaignNotes.deduplication.DeduplicationCoordinator;
 import CampaignNotes.deduplication.DeduplicationLLMService;
@@ -381,7 +382,7 @@ public class ArtifactGraphService {
                                 "  ELSE [n IN (a.note_ids + $note_ids) WHERE NOT n IN a.note_ids | n] + a.note_ids " +
                                 "END, " +
                                 "a.created_at = COALESCE(a.created_at, datetime()), a.id = $id",
-                                sanitizeNeo4jLabel(campaign.getNeo4jLabel()) + "_Artifact"
+                                Neo4jRepository.sanitizeNeo4jLabel(campaign.getNeo4jLabel()) + "_Artifact"
                             );
                             
                             Map<String, Object> params = Map.of(
@@ -413,8 +414,8 @@ public class ArtifactGraphService {
                                 "  ELSE [n IN (r.note_ids + $note_ids) WHERE NOT n IN r.note_ids | n] + r.note_ids " +
                                 "END, " +
                                 "r.created_at = COALESCE(r.created_at, datetime()), r.id = $id",
-                                sanitizeNeo4jLabel(campaign.getNeo4jLabel()), sanitizeNeo4jLabel(campaign.getNeo4jLabel()), 
-                                sanitizeRelationshipType(relationship.getLabel())
+                                Neo4jRepository.sanitizeNeo4jLabel(campaign.getNeo4jLabel()), Neo4jRepository.sanitizeNeo4jLabel(campaign.getNeo4jLabel()), 
+                                Neo4jRepository.sanitizeRelationshipType(relationship.getLabel())
                             );
                             
                             Map<String, Object> params = Map.of(
@@ -622,31 +623,5 @@ public class ArtifactGraphService {
         }
         
         return artifacts;
-    }
-    
-    private String sanitizeRelationshipType(String label) {
-        // Neo4j relationship types must be valid identifiers
-        return label.toUpperCase()
-                   .replaceAll("[^A-Z0-9_]", "_")
-                   .replaceAll("_{2,}", "_");
-    }
-    
-    /**
-     * Sanitizes a string to be used as a Neo4j label.
-     * Neo4j labels cannot contain spaces, hyphens, or special characters.
-     * Only letters, numbers, and underscores are allowed.
-     * 
-     * @param input the input string to sanitize
-     * @return sanitized label suitable for Neo4j
-     */
-    private String sanitizeNeo4jLabel(String input) {
-        if (input == null || input.trim().isEmpty()) {
-            return "DefaultLabel";
-        }
-        
-        return input.replaceAll("[^a-zA-Z0-9_]", "_")  // Replace invalid characters with underscore
-                   .replaceAll("_{2,}", "_")           // Replace multiple underscores with single
-                   .replaceAll("^_+|_+$", "")         // Remove leading/trailing underscores
-                   .substring(0, Math.min(input.length(), 100)); // Limit length to prevent very long labels
     }
 } 

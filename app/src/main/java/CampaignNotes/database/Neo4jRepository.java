@@ -115,6 +115,44 @@ public class Neo4jRepository {
             }
         }
     }
+
+    /**
+     * Sanitizes a string to be used as a Neo4j label.
+     * Neo4j labels cannot contain spaces, hyphens, or special characters.
+     * Only letters, numbers, and underscores are allowed.
+     * 
+     * @param input the input string to sanitize
+     * @return sanitized label suitable for Neo4j
+     */
+    public static String sanitizeNeo4jLabel(String input) {
+        if (input == null || input.trim().isEmpty()) {
+            return "DefaultLabel";
+        }
+        
+        String sanitized = input.replaceAll("[^a-zA-Z0-9_]", "_")  // Replace invalid characters with underscore
+                   .replaceAll("_{2,}", "_")           // Replace multiple underscores with single
+                   .replaceAll("^_+|_+$", "");         // Remove leading/trailing underscores
+        
+        return sanitized.substring(0, Math.min(sanitized.length(), 100)); // Limit length to prevent very long labels
+    }
+    
+    /**
+     * Sanitizes a relationship type for Neo4j.
+     * Neo4j relationship types must be valid identifiers.
+     * 
+     * @param label the relationship label to sanitize
+     * @return sanitized relationship type suitable for Neo4j
+     */
+    public static String sanitizeRelationshipType(String label) {
+        if (label == null || label.trim().isEmpty()) {
+            return "RELATED_TO";
+        }
+        
+        return label.toUpperCase()
+                   .replaceAll("[^A-Z0-9_]", "_")
+                   .replaceAll("_{2,}", "_")
+                   .replaceAll("^_+|_+$", "");
+    }
 }
 
 

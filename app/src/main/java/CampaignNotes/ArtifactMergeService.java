@@ -2,13 +2,14 @@ package CampaignNotes;
 
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
-import CampaignNotes.database.DatabaseConnectionManager;
-import model.Artifact;
-import model.Relationship;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Session;
+
+import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.database.Neo4jRepository;
+import model.Artifact;
+import model.Relationship;
 
 /**
  * Service for merging artifacts and relationships in Neo4j during deduplication.
@@ -53,7 +54,7 @@ public class ArtifactMergeService {
             try (Session session = driver.session()) {
                 return session.executeWrite(tx -> {
                     try {
-                        String sanitizedLabel = sanitizeNeo4jLabel(campaignLabel) + "_Artifact";
+                        String sanitizedLabel = Neo4jRepository.sanitizeNeo4jLabel(campaignLabel) + "_Artifact";
                         
                         // Get existing artifact to merge note_ids
                         String getCypher = String.format(
@@ -150,9 +151,9 @@ public class ArtifactMergeService {
             try (Session session = driver.session()) {
                 return session.executeWrite(tx -> {
                     try {
-                        String sanitizedLabel = sanitizeNeo4jLabel(campaignLabel) + "_Artifact";
-                        String sanitizedRelType = sanitizeRelationshipType(relationshipLabel);
-                        String sanitizedNewRelType = sanitizeRelationshipType(newRelationship.getLabel());
+                        String sanitizedLabel = Neo4jRepository.sanitizeNeo4jLabel(campaignLabel) + "_Artifact";
+                        String sanitizedRelType = Neo4jRepository.sanitizeRelationshipType(relationshipLabel);
+                        String sanitizedNewRelType = Neo4jRepository.sanitizeRelationshipType(newRelationship.getLabel());
                         
                         // Get existing relationship to merge note_ids
                         String getCypher = String.format(
@@ -225,29 +226,6 @@ public class ArtifactMergeService {
             System.err.println("Error merging relationships: " + e.getMessage());
             return false;
         }
-    }
-    
-    /**
-     * Sanitizes a string to be used as a Neo4j label.
-     */
-    private String sanitizeNeo4jLabel(String input) {
-        if (input == null || input.trim().isEmpty()) {
-            return "DefaultLabel";
-        }
-        
-        return input.replaceAll("[^a-zA-Z0-9_]", "_")
-                   .replaceAll("_{2,}", "_")
-                   .replaceAll("^_+|_+$", "")
-                   .substring(0, Math.min(input.length(), 100));
-    }
-    
-    /**
-     * Sanitizes a relationship type for Neo4j.
-     */
-    private String sanitizeRelationshipType(String label) {
-        return label.toUpperCase()
-                   .replaceAll("[^A-Z0-9_]", "_")
-                   .replaceAll("_{2,}", "_");
     }
 }
 
