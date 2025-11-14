@@ -95,12 +95,10 @@ public class CandidateFinder {
                     payload.get("artifact_type").getStringValue() : "";
                 String description = payload.get("description") != null ? 
                     payload.get("description").getStringValue() : "";
-                String shortDescription = payload.get("short_description") != null ? 
-                    payload.get("short_description").getStringValue() : "";
                 
                 if (!artifactId.isEmpty() && !name.isEmpty()) {
                     ArtifactCandidate candidate = new ArtifactCandidate(artifactId, name, type, 
-                                                                       description, shortDescription, similarity);
+                                                                       description, similarity);
                     candidates.add(candidate);
                 }
             }

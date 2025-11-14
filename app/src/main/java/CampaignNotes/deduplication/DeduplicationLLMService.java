@@ -11,7 +11,6 @@ import CampaignNotes.dto.deduplication.RelationshipCandidate;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.LangfuseClient;
 import CampaignNotes.tracking.otel.OTelGenerationObservation;
-import CampaignNotes.tracking.otel.OTelTraceManager;
 import CampaignNotes.tracking.otel.OTelTraceManager.OTelTrace;
 import model.Artifact;
 import model.Campain;
@@ -202,18 +201,17 @@ public class DeduplicationLLMService {
      * Formats an artifact for inclusion in the prompt.
      */
     private String formatArtifactForPrompt(Artifact artifact) {
-        return String.format("Name: %s\nType: %s\nDescription: %s\nShort Description: %s",
-                artifact.getName(), artifact.getType(), artifact.getDescription() != null ? artifact.getDescription() : "",
-                artifact.getShortDescription() != null ? artifact.getShortDescription() : "");
+        return String.format("Name: %s\nType: %s\nDescription: %s",
+                artifact.getName(), artifact.getType(), 
+                artifact.getDescription() != null ? artifact.getDescription() : "");
     }
     
     /**
      * Formats an artifact candidate for inclusion in the prompt.
      */
     private String formatArtifactForPrompt(ArtifactCandidate candidate) {
-        return String.format("Name: %s\nType: %s\nDescription: %s\nShort Description: %s",
-                candidate.getName(), candidate.getType(), candidate.getDescription(),
-                candidate.getShortDescription());
+        return String.format("Name: %s\nType: %s\nDescription: %s",
+                candidate.getName(), candidate.getType(), candidate.getDescription());
     }
     
     /**

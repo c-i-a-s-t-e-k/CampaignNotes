@@ -1,13 +1,12 @@
 package CampaignNotes;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.llm.OpenAIEmbeddingService;
-import io.qdrant.client.QdrantClient;
 import static io.qdrant.client.PointIdFactory.id;
+import io.qdrant.client.QdrantClient;
 import static io.qdrant.client.ValueFactory.value;
 import static io.qdrant.client.VectorsFactory.vectors;
 import io.qdrant.client.grpc.Points.PointStruct;
@@ -39,7 +38,7 @@ public class GraphEmbeddingService {
     
     /**
      * Generates a text representation of an artifact for embedding.
-     * Combines name, type, and short description for comprehensive context.
+     * Combines name, type, and description for comprehensive context.
      * 
      * @param artifact the artifact to create text representation for
      * @return text representation suitable for embedding
@@ -49,12 +48,8 @@ public class GraphEmbeddingService {
         sb.append("Artifact: ").append(artifact.getName());
         sb.append(" | Type: ").append(artifact.getType());
         
-        if (artifact.getShortDescription() != null && !artifact.getShortDescription().isEmpty()) {
-            sb.append(" | Description: ").append(artifact.getShortDescription());
-        }
-        
         if (artifact.getDescription() != null && !artifact.getDescription().isEmpty()) {
-            sb.append(" | Details: ").append(artifact.getDescription());
+            sb.append(" | Description: ").append(artifact.getDescription());
         }
         
         return sb.toString();
@@ -150,7 +145,6 @@ public class GraphEmbeddingService {
                     .putPayload("type", value("artifact"))  // Type tag for filtering
                     .putPayload("artifact_type", value(artifact.getType()))
                     .putPayload("description", value(artifact.getDescription() != null ? artifact.getDescription() : ""))
-                    .putPayload("short_description", value(artifact.getShortDescription() != null ? artifact.getShortDescription() : ""))
                     .putPayload("campaign_uuid", value(artifact.getCampaignUuid()))
                     .putPayload("created_at", value(artifact.getCreatedAt().toString()))
                     .build();

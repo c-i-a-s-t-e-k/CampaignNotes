@@ -28,7 +28,7 @@ public class DeduplicationConfig {
     private int candidateLimit;
     private double similarityThreshold;
     private int llmConfidenceThreshold;
-    private final Dotenv dotenv;
+    private Dotenv dotenv;
     
     /**
      * Constructor that loads configuration from environment variables.

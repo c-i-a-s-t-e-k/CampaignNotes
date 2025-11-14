@@ -19,7 +19,6 @@ public class Artifact implements Serializable {
     private String campaignUuid;
     private List<String> noteIds;
     private String description;
-    private String shortDescription;
     private LocalDateTime createdAt;
     
     /**
@@ -50,14 +49,6 @@ public class Artifact implements Serializable {
     public Artifact(String name, String type, String campaignUuid, String noteId, String description) {
         this(name, type, campaignUuid, noteId);
         this.description = description;
-    }
-    
-    /**
-     * Constructor with short description for embedding purposes
-     */
-    public Artifact(String name, String type, String campaignUuid, String noteId, String description, String shortDescription) {
-        this(name, type, campaignUuid, noteId, description);
-        this.shortDescription = shortDescription;
     }
     
     /**
@@ -146,14 +137,6 @@ public class Artifact implements Serializable {
         this.description = description;
     }
     
-    public String getShortDescription() {
-        return shortDescription;
-    }
-    
-    public void setShortDescription(String shortDescription) {
-        this.shortDescription = shortDescription;
-    }
-    
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -164,7 +147,6 @@ public class Artifact implements Serializable {
     
     /**
      * Validates the artifact according to business rules.
-     * Note: shortDescription is optional for validation purposes.
      * @return true if valid, false otherwise
      */
     public boolean isValid() {

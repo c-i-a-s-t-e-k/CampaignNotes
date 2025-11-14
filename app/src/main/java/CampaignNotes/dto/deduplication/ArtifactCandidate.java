@@ -12,7 +12,6 @@ public class ArtifactCandidate {
     private String name;
     private String type;
     private String description;
-    private String shortDescription;
     private double similarityScore;
     private List<String> sourceNoteIds;
     
@@ -39,13 +38,12 @@ public class ArtifactCandidate {
      * Constructor with all fields
      */
     public ArtifactCandidate(String artifactId, String name, String type, String description, 
-                            String shortDescription, double similarityScore, List<String> sourceNoteIds) {
+                            double similarityScore, List<String> sourceNoteIds) {
         this();
         this.artifactId = artifactId;
         this.name = name;
         this.type = type;
         this.description = description;
-        this.shortDescription = shortDescription;
         this.similarityScore = similarityScore;
         this.sourceNoteIds = sourceNoteIds != null ? new ArrayList<>(sourceNoteIds) : new ArrayList<>();
     }
@@ -81,14 +79,6 @@ public class ArtifactCandidate {
     
     public void setDescription(String description) {
         this.description = description;
-    }
-    
-    public String getShortDescription() {
-        return shortDescription;
-    }
-    
-    public void setShortDescription(String shortDescription) {
-        this.shortDescription = shortDescription;
     }
     
     public double getSimilarityScore() {
