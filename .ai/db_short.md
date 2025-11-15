@@ -4,7 +4,7 @@
 - **Architektura 3 baz**:
   - **SQLite** – metadane kampanii i kategorie
   - **Neo4j** – graf artefaktów i relacji
-  - **Qdrant** – wektorowe wyszukiwanie notatek
+  - **Qdrant** – wektorowe wyszukiwanie i deduplikacja (notatki, artefakty, relacje)
 
 ## SQLite (metadane)
 - **Plik**: `sqlite.db` (katalog główny)
@@ -33,15 +33,16 @@
 - **Relacje – properties**: `id`, `label`, `description`, `reasoning`, `note_ids` (List<String>), `campaignUuid`, `createdAt`
 - **Integracje**: `artifact_notes.artifact_uuid` (SQLite) ↔ węzły w Neo4j; statusy sync w `campaign_notes.neo4j_sync_status`.
 
-## Qdrant (wektory notatek)
-- **Env**: `QDRANT_URL`, `QDRANT_GRPC_PORT`
+## Qdrant (wektory: notatki, artefakty, relacje)
+- **Env**: `QUADRANT_URL`, `QUADRANT_GRPC_PORT`
 - **Repo**: `CampaignNotes/database/QdrantRepository.java`
-- **Kolekcje**: jedna na kampanię; nazwa z `campains.quadrant_collection_name`
-- **Punkt**:
-  - `id`: UUID notatki (v5 z treści)
-  - `vector`: embedding 1536-D (OpenAI)
-  - `payload`: `id`, `campaignUuid`, `title`, `content` (≤ 500 słów), `createdAt`, `updatedAt`, `isOverride`, `overrideReason`, `isOverridden`, `overriddenByNoteIds[]`
-- **Integracje**: 1:1 z `campaign_notes.note_uuid` (SQLite) ↔ `Qdrant.point_id`; statusy sync w `campaign_notes.qdrant_sync_status`.
+- **Kolekcje**: jedna na kampanię (wszystkie typy razem); nazwa z `campains.quadrant_collection_name`
+- **Punkt**: `id` (numeric hash), `vector` (embedding 1536-D OpenAI), `payload` (zależny od typu)
+- **Typy punktów**:
+  - **`type=note`**: `note_id`, `title`, `content` (≤500 słów), `campaign_uuid`, `created_at`, `updated_at`, `is_override`, `is_overridden`, `type`, `override_reason?` – semantyczne wyszukiwanie
+  - **`type=artifact`**: `artifact_id`, `name`, `artifact_type`, `description`, `campaign_uuid`, `created_at`, `type` – deduplikacja (Phase 1)
+  - **`type=relation`**: `relationship_id`, `source`, `target`, `label`, `description`, `reasoning`, `campaign_uuid`, `created_at`, `type` – deduplikacja (Phase 1)
+- **Integracje**: notatki 1:1 z `campaign_notes.note_uuid` (SQLite); artefakty/relacje ↔ Neo4j; statusy sync w `campaign_notes.qdrant_sync_status`.
 
 ## Połączenia i operacje
 - **Manager**: `CampaignNotes/database/DatabaseConnectionManager.java`

@@ -431,57 +431,85 @@ Etykiety Neo4j są sanityzowane przez usunięcie spacji, myślników i znaków s
 ## 3. Qdrant - Wektorowa Baza Danych
 
 ### Opis
-Qdrant przechowuje notatki kampanii w formie wektorowej, umożliwiając semantyczne wyszukiwanie i analizę treści.
+Qdrant przechowuje embeddingsy wektorowe dla trzech typów encji kampanii: notatek, artefaktów i relacji. Umożliwia semantyczne wyszukiwanie oraz deduplikację podczas dodawania nowych danych.
 
 ### Konfiguracja Połączenia
 - **Zmienne środowiskowe:**
-  - `QDRANT_URL` - URL serwera Qdrant
-  - `QDRANT_GRPC_PORT` - Port gRPC
+  - `QUADRANT_URL` - URL serwera Qdrant
+  - `QUADRANT_GRPC_PORT` - Port gRPC
 - **Zarządzanie:** `QdrantRepository.java`
 
 ### Struktura Danych
 
 #### Kolekcje
-Każda kampania ma dedykowaną kolekcję identyfikowaną przez `quadrant_collection_name` z tabeli `campains`.
+Każda kampania ma dedykowaną kolekcję identyfikowaną przez `quadrant_collection_name` z tabeli `campains`. W jednej kolekcji przechowywane są wszystkie trzy typy punktów (notatki, artefakty, relacje) dla danej kampanii.
 
 #### Punkty (Points)
-Każda notatka jest przechowywana jako punkt wektorowy:
+Każdy punkt zawiera:
+- **Identyfikator:** Numeryczny ID (hash generowany z UUID encji)
+- **Wektor:** 1536-wymiarowy embedding wygenerowany przez OpenAI
+- **Payload:** Metadane specyficzne dla typu punktu
 
-**Identyfikator punktu:** UUID notatki (generowany na podstawie zawartości)
+### Typy Punktów i Pola Payload
 
-**Wektor:** 1536-wymiarowy embedding wygenerowany przez OpenAI
+#### Typ: `note`
+Przechowuje notatki kampanii do semantycznego wyszukiwania.
 
-**Payload (metadane):**
-```java
-{
-    "id": "note-uuid",
-    "campaignUuid": "campaign-uuid", 
-    "title": "tytuł notatki",
-    "content": "treść notatki",
-    "createdAt": "2024-01-01T12:00:00",
-    "updatedAt": "2024-01-01T12:00:00",
-    "isOverride": false,
-    "overrideReason": null,
-    "isOverridden": false,
-    "overriddenByNoteIds": []
-}
-```
-
-**Pola:**
-- `id` (String) - UUID notatki (v5 generowany na podstawie treści)
-- `campaignUuid` (String) - Identyfikator kampanii do której należy notatka
+**Payload:**
+- `note_id` (String) - UUID notatki
 - `title` (String) - Tytuł notatki
 - `content` (String) - Treść notatki (max 500 słów)
-- `createdAt` (String) - Data i czas utworzenia notatki
-- `updatedAt` (String) - Data i czas ostatniej modyfikacji
-- `isOverride` (Boolean) - Czy notatka nadpisuje inną notatkę
-- `overrideReason` (String) - Powód nadpisania (null jeśli nie ma)
-- `isOverridden` (Boolean) - Czy notatka została nadpisana przez inną
-- `overriddenByNoteIds` (Array) - Lista UUID notatek, które nadpisały tę notatkę
+- `campaign_uuid` (String) - UUID kampanii
+- `created_at` (String) - Data utworzenia (ISO 8601)
+- `updated_at` (String) - Data modyfikacji (ISO 8601)
+- `is_override` (Boolean) - Czy notatka nadpisuje inną
+- `is_overridden` (Boolean) - Czy notatka została nadpisana
+- `type` (String) - Wartość: `"note"` (filtrowanie)
+- `override_reason` (String, opcjonalne) - Powód nadpisania (tylko gdy nie-null)
 
-Powiązania z SQLite/Neo4j:
-- 1:1 z `campaign_notes.note_uuid` (SQLite) → `Qdrant.point_id`
-- Statusy synchronizacji z Qdrant śledzone w `campaign_notes.qdrant_sync_status`
+**Powiązania:**
+- 1:1 z `campaign_notes.note_uuid` (SQLite)
+- Status sync: `campaign_notes.qdrant_sync_status`
+
+#### Typ: `artifact`
+Przechowuje artefakty do deduplikacji w Phase 1 (ANN search).
+
+**Payload:**
+- `artifact_id` (String) - UUID artefaktu (zgodny z Neo4j)
+- `name` (String) - Nazwa artefaktu
+- `artifact_type` (String) - Kategoria: `characters|locations|items|events`
+- `description` (String) - Opis artefaktu
+- `campaign_uuid` (String) - UUID kampanii
+- `created_at` (String) - Data utworzenia (ISO 8601)
+- `type` (String) - Wartość: `"artifact"` (filtrowanie)
+
+**Powiązania:**
+- `artifact_id` odpowiada węzłowi w Neo4j (`id` property)
+
+#### Typ: `relation`
+Przechowuje relacje między artefaktami do deduplikacji w Phase 1 (ANN search).
+
+**Payload:**
+- `relationship_id` (String) - UUID relacji (zgodny z Neo4j)
+- `source` (String) - Nazwa artefaktu źródłowego
+- `target` (String) - Nazwa artefaktu docelowego
+- `label` (String) - Etykieta relacji
+- `description` (String) - Opis relacji
+- `reasoning` (String) - Uzasadnienie relacji
+- `campaign_uuid` (String) - UUID kampanii
+- `created_at` (String) - Data utworzenia (ISO 8601)
+- `type` (String) - Wartość: `"relation"` (filtrowanie)
+
+**Powiązania:**
+- `relationship_id` odpowiada krawędzi w Neo4j (`id` property)
+
+### Przypadki Użycia
+
+#### 1. Semantyczne Wyszukiwanie Notatek
+Wyszukiwanie notatek na podstawie podobieństwa semantycznego (filtr: `type=note`).
+
+#### 2. Deduplikacja Artefaktów i Relacji (Phase 1)
+Podczas dodawania nowych notatek system wykonuje ANN search w Qdrant, aby znaleźć potencjalne duplikaty artefaktów (`type=artifact`) i relacji (`type=relation`) przed zapisem do Neo4j. Kandydaci są następnie weryfikowani przez LLM (Phase 2).
 
 ## Zarządzanie Połączeniami
 

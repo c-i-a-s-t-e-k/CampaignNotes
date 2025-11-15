@@ -3,11 +3,15 @@ package CampaignNotes;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Lazy;
 
+import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.deduplication.DeduplicationCoordinator;
 import CampaignNotes.llm.OpenAIEmbeddingService;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.otel.OpenTelemetryConfig;
+import io.github.cdimascio.dotenv.Dotenv;
 
 /**
  * Main Spring Boot application class for CampaignNotes REST API.
@@ -64,13 +68,85 @@ public class Application {
     }
     
     /**
+     * Bean for DeduplicationConfig.
+     */
+    @Bean
+    public DeduplicationConfig deduplicationConfig() {
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+        return new DeduplicationConfig(dotenv);
+    }
+    
+    /**
+     * Bean for GraphEmbeddingService.
+     */
+    @Bean
+    public GraphEmbeddingService graphEmbeddingService(OpenAIEmbeddingService embeddingService,
+                                                       DatabaseConnectionManager dbConnectionManager) {
+        return new GraphEmbeddingService(embeddingService, dbConnectionManager);
+    }
+    
+    /**
      * Bean for ArtifactGraphService.
      */
     @Bean
     public ArtifactGraphService artifactGraphService(OpenAILLMService llmService, 
                                                      ArtifactCategoryService categoryService,
-                                                     DatabaseConnectionManager dbConnectionManager) {
-        return new ArtifactGraphService(llmService, categoryService, dbConnectionManager);
+                                                     DatabaseConnectionManager dbConnectionManager,
+                                                     GraphEmbeddingService graphEmbeddingService,
+                                                     DeduplicationConfig deduplicationConfig) {
+        return new ArtifactGraphService(llmService, categoryService, dbConnectionManager,
+                                       graphEmbeddingService, deduplicationConfig);
+    }
+    
+    /**
+     * Bean for DeduplicationSessionManager.
+     */
+    @Bean
+    public DeduplicationSessionManager deduplicationSessionManager() {
+        return DeduplicationSessionManager.getInstance();
+    }
+    
+    /**
+     * Bean for DeduplicationCoordinator.
+     * Note: Uses @Lazy for NoteService to break circular dependency.
+     */
+    @Bean
+    public CampaignNotes.deduplication.DeduplicationCoordinator deduplicationCoordinator(
+            CampaignNotes.deduplication.CandidateFinder candidateFinder,
+            CampaignNotes.deduplication.DeduplicationLLMService dedupLLMService,
+            GraphEmbeddingService graphEmbeddingService,
+            DeduplicationConfig config,
+            @Lazy NoteService noteService) {
+        return new CampaignNotes.deduplication.DeduplicationCoordinator(
+            candidateFinder, dedupLLMService, graphEmbeddingService, config, noteService);
+    }
+    
+    /**
+     * Bean for CandidateFinder.
+     */
+    @Bean
+    public CampaignNotes.deduplication.CandidateFinder candidateFinder(
+            DatabaseConnectionManager dbConnectionManager,
+            DeduplicationConfig config) {
+        return new CampaignNotes.deduplication.CandidateFinder(dbConnectionManager, config);
+    }
+    
+    /**
+     * Bean for DeduplicationLLMService.
+     */
+    @Bean
+    public CampaignNotes.deduplication.DeduplicationLLMService deduplicationLLMService(
+            OpenAILLMService llmService,
+            CampaignNotes.tracking.LangfuseClient langfuseClient) {
+        return new CampaignNotes.deduplication.DeduplicationLLMService(llmService, langfuseClient);
+    }
+    
+    /**
+     * Bean for LangfuseClient.
+     */
+    @Bean
+    public CampaignNotes.tracking.LangfuseClient langfuseClient() {
+        return CampaignNotes.tracking.LangfuseClient.getInstance();
     }
     
     /**
@@ -80,8 +156,12 @@ public class Application {
     public NoteService noteService(CampaignManager campaignManager,
                                    OpenAIEmbeddingService embeddingService,
                                    ArtifactGraphService artifactService,
-                                   DatabaseConnectionManager dbConnectionManager) {
-        return new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager);
+                                   DatabaseConnectionManager dbConnectionManager,
+                                   DeduplicationCoordinator deduplicationCoordinator,
+                                   DeduplicationSessionManager sessionManager,
+                                   DeduplicationConfig deduplicationConfig) {
+        return new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager,
+                             deduplicationCoordinator, sessionManager, deduplicationConfig);
     }
     
     /**

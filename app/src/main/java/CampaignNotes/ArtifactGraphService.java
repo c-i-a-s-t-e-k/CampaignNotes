@@ -11,7 +11,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.database.Neo4jRepository;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.LangfuseClient;
 import CampaignNotes.tracking.otel.OTelGenerationObservation;
@@ -36,6 +38,8 @@ public class ArtifactGraphService {
     private final OTelTraceManager traceManager;
     private final ArtifactCategoryService categoryService;
     private final DatabaseConnectionManager dbConnectionManager;
+    private final GraphEmbeddingService graphEmbeddingService;
+    private final DeduplicationConfig deduplicationConfig;
     private final Gson gson;
     
     // Timeout for the entire workflow (1 minute as per PRD)
@@ -57,6 +61,11 @@ public class ArtifactGraphService {
         this.traceManager = OTelTraceManager.getInstance();
         this.categoryService = new ArtifactCategoryService();
         this.dbConnectionManager = new DatabaseConnectionManager();
+        this.graphEmbeddingService = new GraphEmbeddingService(
+            new CampaignNotes.llm.OpenAIEmbeddingService(), 
+            dbConnectionManager);
+        io.github.cdimascio.dotenv.Dotenv dotenv = io.github.cdimascio.dotenv.Dotenv.configure().ignoreIfMissing().load();
+        this.deduplicationConfig = new CampaignNotes.config.DeduplicationConfig(dotenv);
         this.gson = new Gson();
     }
     
@@ -66,15 +75,21 @@ public class ArtifactGraphService {
      * @param llmService the LLM service to use
      * @param categoryService the artifact category service to use
      * @param dbConnectionManager the database connection manager to use
+     * @param graphEmbeddingService the graph embedding service for deduplication
+     * @param deduplicationConfig the deduplication configuration
      */
     public ArtifactGraphService(OpenAILLMService llmService, 
                                ArtifactCategoryService categoryService, 
-                               DatabaseConnectionManager dbConnectionManager) {
+                               DatabaseConnectionManager dbConnectionManager,
+                               GraphEmbeddingService graphEmbeddingService,
+                               DeduplicationConfig deduplicationConfig) {
         this.llmService = llmService;
         this.langfuseClient = LangfuseClient.getInstance();
         this.traceManager = OTelTraceManager.getInstance();
         this.categoryService = categoryService;
         this.dbConnectionManager = dbConnectionManager;
+        this.graphEmbeddingService = graphEmbeddingService;
+        this.deduplicationConfig = deduplicationConfig;
         this.gson = new Gson();
     }
     
@@ -90,7 +105,9 @@ public class ArtifactGraphService {
      * @param note the note to process
      * @param campaign the campaign the note belongs to
      * @return ArtifactProcessingResult with extracted artifacts and relationships
+     * @deprecated Use extractArtifactsAndRelationships() and saveToNeo4j() separately for deduplication workflow
      */
+    @Deprecated
     public ArtifactProcessingResult processNoteArtifacts(Note note, Campain campaign) {
         long startTime = System.currentTimeMillis();
         
@@ -178,6 +195,116 @@ public class ArtifactGraphService {
             String errorMessage = "Error processing artifacts: " + e.getMessage();
             System.err.println(errorMessage);
             e.printStackTrace();
+            
+            return new ArtifactProcessingResult(errorMessage, note.getId(), campaign.getUuid());
+        }
+    }
+    
+    /**
+     * Extracts artifacts and relationships from a note without saving to Neo4j.
+     * This method allows deduplication to occur before saving.
+     * 
+     * Uses OpenTelemetry for tracking:
+     * - Creates a trace for the entire workflow
+     * - Creates observations for NAE and ARE operations
+     * - Automatically reports success/failure status
+     * 
+     * @param note the note to process
+     * @param campaign the campaign the note belongs to
+     * @param trace OpenTelemetry trace for tracking (optional, will create new if null)
+     * @return ArtifactProcessingResult with extracted artifacts and relationships (not saved to Neo4j)
+     */
+    public ArtifactProcessingResult extractArtifactsAndRelationships(Note note, Campain campaign, OTelTrace trace) {
+        long startTime = System.currentTimeMillis();
+        boolean shouldCloseTrace = false;
+        
+        // Create trace if not provided
+        if (trace == null) {
+            trace = traceManager.createTrace(
+                "artifact-extraction",
+                campaign.getUuid(),
+                note.getId(),
+                null,
+                note.toString()
+            );
+            shouldCloseTrace = true;
+        }
+        
+        try {
+            trace.addEvent("artifact_extraction_started");
+            
+            // Get categories for this campaign
+            Map<String, String> categories = categoryService.getCategoriesForCampaign(campaign.getUuid());
+            if (categories.isEmpty()) {
+                categoryService.assignDefaultCategoriesToCampaign(campaign.getUuid());
+                categories = categoryService.getCategoriesForCampaign(campaign.getUuid());
+            }
+            
+            trace.setAttribute("workflow.type", "ai-powered-extraction");
+            trace.setAttribute("categories.count", categories.size());
+            
+            // Check timeout
+            if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
+                trace.setStatus(false, "Workflow timeout before artifact extraction");
+                return new ArtifactProcessingResult("Workflow timeout before artifact extraction", 
+                                                   note.getId(), campaign.getUuid());
+            }
+            
+            // Step 1: Extract artifacts using o3-mini
+            List<Artifact> artifacts = extractArtifacts(note.getFullTextForEmbedding(), categories, 
+                                                       note, campaign, trace);
+            
+            // Check timeout
+            if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
+                trace.setStatus(false, "Workflow timeout after artifact extraction");
+                return new ArtifactProcessingResult("Workflow timeout after artifact extraction", 
+                                                   note.getId(), campaign.getUuid());
+            }
+            
+            // Step 2: Extract relationships using o3-mini (only if we have artifacts)
+            List<Relationship> relationships = new ArrayList<>();
+            if (!artifacts.isEmpty()) {
+                relationships = extractRelationships(note.getFullTextForEmbedding(), artifacts, 
+                                                    note, campaign, trace);
+            }
+            
+            // Check timeout
+            if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
+                trace.setStatus(false, "Workflow timeout after relationship extraction");
+                return new ArtifactProcessingResult("Workflow timeout after relationship extraction", 
+                                                   note.getId(), campaign.getUuid());
+            }
+            
+            long totalDuration = System.currentTimeMillis() - startTime;
+            
+            // Add metadata to trace
+            trace.setAttribute("artifacts.count", artifacts.size());
+            trace.setAttribute("relationships.count", relationships.size());
+            trace.setAttribute("extraction.duration_ms", totalDuration);
+            trace.setStatus(true, "Artifact extraction completed successfully");
+            
+            // Calculate total tokens (rough estimation)
+            int totalTokens = artifacts.size() * 100 + relationships.size() * 150;
+            
+            ArtifactProcessingResult result = new ArtifactProcessingResult(artifacts, relationships, totalTokens, 
+                                               totalDuration, note.getId(), campaign.getUuid());
+            
+            if (shouldCloseTrace) {
+                trace.close(gson.toJson(artifacts) + "\n" + gson.toJson(relationships));
+            }
+            
+            return result;
+            
+        } catch (Exception e) {
+            String errorMessage = "Error extracting artifacts: " + e.getMessage();
+            System.err.println(errorMessage);
+            e.printStackTrace();
+            
+            if (shouldCloseTrace && trace != null) {
+                trace.recordException(e);
+                trace.setStatus(false, errorMessage);
+                trace.close();
+            }
             
             return new ArtifactProcessingResult(errorMessage, note.getId(), campaign.getUuid());
         }
@@ -332,13 +459,14 @@ public class ArtifactGraphService {
     
     /**
      * Saves artifacts and relationships to Neo4j database.
+     * This method is public to allow saving after deduplication workflow.
      * 
      * @param artifacts list of artifacts to save
      * @param relationships list of relationships to save
      * @param campaign the campaign these belong to
      * @return true if saved successfully, false otherwise
      */
-    private boolean saveToNeo4j(List<Artifact> artifacts, List<Relationship> relationships, Campain campaign) {
+    public boolean saveToNeo4j(List<Artifact> artifacts, List<Relationship> relationships, Campain campaign) {
         try {
             var driver = dbConnectionManager.getNeo4jRepository().getDriver();
             if (driver == null) {
@@ -365,7 +493,7 @@ public class ArtifactGraphService {
                                 "  ELSE [n IN (a.note_ids + $note_ids) WHERE NOT n IN a.note_ids | n] + a.note_ids " +
                                 "END, " +
                                 "a.created_at = COALESCE(a.created_at, datetime()), a.id = $id",
-                                sanitizeNeo4jLabel(campaign.getNeo4jLabel()) + "_Artifact"
+                                Neo4jRepository.sanitizeNeo4jLabel(campaign.getNeo4jLabel()) + "_Artifact"
                             );
                             
                             Map<String, Object> params = Map.of(
@@ -397,8 +525,8 @@ public class ArtifactGraphService {
                                 "  ELSE [n IN (r.note_ids + $note_ids) WHERE NOT n IN r.note_ids | n] + r.note_ids " +
                                 "END, " +
                                 "r.created_at = COALESCE(r.created_at, datetime()), r.id = $id",
-                                sanitizeNeo4jLabel(campaign.getNeo4jLabel()), sanitizeNeo4jLabel(campaign.getNeo4jLabel()), 
-                                sanitizeRelationshipType(relationship.getLabel())
+                                Neo4jRepository.sanitizeNeo4jLabel(campaign.getNeo4jLabel()), Neo4jRepository.sanitizeNeo4jLabel(campaign.getNeo4jLabel()), 
+                                Neo4jRepository.sanitizeRelationshipType(relationship.getLabel())
                             );
                             
                             Map<String, Object> params = Map.of(
@@ -427,6 +555,65 @@ public class ArtifactGraphService {
         } catch (Exception e) {
             System.err.println("Error saving to Neo4j: " + e.getMessage());
             return false;
+        }
+    }
+    
+    /**
+     * Saves artifacts and relationships to Neo4j database and their embeddings to Qdrant.
+     * Overloaded version that also handles embedding storage for complete synchronization.
+     * 
+     * @param artifacts list of artifacts to save
+     * @param relationships list of relationships to save
+     * @param campaign the campaign these belong to
+     * @param collectionName the Qdrant collection name for storing embeddings
+     * @return true if saved successfully to Neo4j (embeddings are best-effort), false otherwise
+     */
+    public boolean saveToNeo4j(List<Artifact> artifacts, List<Relationship> relationships, 
+                              Campain campaign, String collectionName) {
+        // First, save to Neo4j
+        boolean neo4jSaved = saveToNeo4j(artifacts, relationships, campaign);
+        
+        if (!neo4jSaved) {
+            return false;
+        }
+        
+        // Then, store embeddings to Qdrant (best-effort, don't fail if this fails)
+        storeGraphEmbeddings(artifacts, relationships, collectionName);
+        
+        return true;
+    }
+    
+    /**
+     * Private helper method to store embeddings for artifacts and relationships in Qdrant.
+     * This is a best-effort operation - failures are logged but don't fail the entire operation.
+     * 
+     * @param artifacts list of artifacts to store embeddings for
+     * @param relationships list of relationships to store embeddings for
+     * @param collectionName the Qdrant collection name
+     */
+    private void storeGraphEmbeddings(List<Artifact> artifacts, List<Relationship> relationships, 
+                                     String collectionName) {
+        try {
+            if (collectionName == null || collectionName.trim().isEmpty()) {
+                System.err.println("Cannot store embeddings: collection name is null or empty");
+                return;
+            }
+            
+            // Store artifact embeddings
+            if (artifacts != null && !artifacts.isEmpty()) {
+                int artifactCount = graphEmbeddingService.storeArtifactEmbeddingsBatch(artifacts, collectionName);
+                System.out.println("Stored embeddings for " + artifactCount + " artifacts in Qdrant");
+            }
+            
+            // Store relationship embeddings
+            if (relationships != null && !relationships.isEmpty()) {
+                int relationshipCount = graphEmbeddingService.storeRelationshipEmbeddingsBatch(relationships, collectionName);
+                System.out.println("Stored embeddings for " + relationshipCount + " relationships in Qdrant");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error storing graph embeddings to Qdrant: " + e.getMessage());
+            // Don't throw - this is a best-effort operation
         }
     }
     
@@ -608,29 +795,380 @@ public class ArtifactGraphService {
         return artifacts;
     }
     
-    private String sanitizeRelationshipType(String label) {
-        // Neo4j relationship types must be valid identifiers
-        return label.toUpperCase()
-                   .replaceAll("[^A-Z0-9_]", "_")
-                   .replaceAll("_{2,}", "_");
+    /**
+     * Merges a new artifact into an existing artifact in Neo4j and updates embeddings in Qdrant.
+     * This method:
+     * 1. Merges note_ids and descriptions in Neo4j
+     * 2. Deletes the new artifact's embedding from Qdrant (since it's merged)
+     * 3. Updates the existing artifact's embedding in Qdrant with new data
+     * 
+     * @param targetArtifactName the name of the existing artifact to merge into
+     * @param newArtifact the new artifact to merge
+     * @param campaignLabel the campaign label for Neo4j
+     * @param collectionName the Qdrant collection name
+     * @return true if merge was successful, false otherwise
+     */
+    public boolean mergeArtifacts(String targetArtifactName, Artifact newArtifact, 
+                                 String campaignLabel, String collectionName) {
+        try {
+            var driver = dbConnectionManager.getNeo4jRepository().getDriver();
+            if (driver == null) {
+                System.err.println("Neo4j driver not available");
+                return false;
+            }
+            
+            try (var session = driver.session()) {
+                // Perform merge in Neo4j
+                String mergedArtifactId = session.executeWrite(tx -> {
+                    try {
+                        String sanitizedLabel = Neo4jRepository.sanitizeNeo4jLabel(campaignLabel) + "_Artifact";
+                        
+                        // Get existing artifact to merge note_ids
+                        String getCypher = String.format(
+                            "MATCH (a:%s {name: $target_name}) " +
+                            "RETURN a.note_ids AS note_ids, a.id AS id",
+                            sanitizedLabel
+                        );
+                        
+                        var getCursor = tx.run(getCypher, 
+                            Map.of("target_name", targetArtifactName));
+                        
+                        List<String> existingNoteIds = new ArrayList<>();
+                        String existingId = null;
+                        if (getCursor.hasNext()) {
+                            var record = getCursor.next();
+                            var noteIdsValue = record.get("note_ids");
+                            if (!noteIdsValue.isNull()) {
+                                existingNoteIds = noteIdsValue.asList(v -> v.asString());
+                            }
+                            existingId = record.get("id").asString();
+                        }
+                        
+                        // Merge new note IDs
+                        List<String> mergedNoteIds = new ArrayList<>(existingNoteIds);
+                        for (String noteId : newArtifact.getNoteIds()) {
+                            if (!mergedNoteIds.contains(noteId)) {
+                                mergedNoteIds.add(noteId);
+                            }
+                        }
+                        
+                        // Update target artifact with merged note_ids and updated description
+                        String updateCypher = String.format(
+                            "MATCH (a:%s {name: $target_name}) " +
+                            "SET a.note_ids = $note_ids, " +
+                            "    a.description = CASE " +
+                            "      WHEN a.description IS NULL OR a.description = '' " +
+                            "      THEN $new_description " +
+                            "      WHEN $new_description IS NULL OR $new_description = '' " +
+                            "      THEN a.description " +
+                            "      ELSE a.description + ' | ' + $new_description " +
+                            "    END, " +
+                            "    a.updated_at = datetime() " +
+                            "RETURN a.id AS artifact_id",
+                            sanitizedLabel
+                        );
+                        
+                        var updateCursor = tx.run(updateCypher,
+                            Map.of("target_name", targetArtifactName,
+                                   "note_ids", mergedNoteIds,
+                                   "new_description", newArtifact.getDescription() != null ? 
+                                       newArtifact.getDescription() : ""));
+                        
+                        if (updateCursor.hasNext()) {
+                            String artifactId = updateCursor.next().get("artifact_id").asString();
+                            System.out.println("Successfully merged artifact " + newArtifact.getName() + 
+                                             " into " + targetArtifactName + " (ID: " + artifactId + ")");
+                            return artifactId;
+                        }
+                        
+                        return null;
+                        
+                    } catch (Exception e) {
+                        System.err.println("Error in merge transaction: " + e.getMessage());
+                        return null;
+                    }
+                });
+                
+                if (mergedArtifactId == null) {
+                    return false;
+                }
+                
+                // Delete new artifact's embedding from Qdrant
+                deleteArtifactEmbedding(newArtifact.getId(), collectionName);
+                
+                // Update existing artifact's embedding in Qdrant
+                updateArtifactEmbeddingAfterMerge(mergedArtifactId, targetArtifactName, 
+                                                 campaignLabel, collectionName);
+                
+                return true;
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error merging artifacts: " + e.getMessage());
+            return false;
+        }
     }
     
     /**
-     * Sanitizes a string to be used as a Neo4j label.
-     * Neo4j labels cannot contain spaces, hyphens, or special characters.
-     * Only letters, numbers, and underscores are allowed.
+     * Merges a new relationship into an existing relationship in Neo4j and updates embeddings in Qdrant.
+     * This method:
+     * 1. Merges note_ids and descriptions in Neo4j
+     * 2. Deletes the new relationship's embedding from Qdrant (since it's merged)
+     * 3. Updates the existing relationship's embedding in Qdrant with new data
      * 
-     * @param input the input string to sanitize
-     * @return sanitized label suitable for Neo4j
+     * @param sourceArtifactName source artifact name for target relationship
+     * @param targetArtifactName target artifact name for target relationship
+     * @param relationshipLabel label of the relationship to merge into
+     * @param newRelationship the new relationship to merge
+     * @param campaignLabel the campaign label for Neo4j
+     * @param collectionName the Qdrant collection name
+     * @return true if merge was successful, false otherwise
      */
-    private String sanitizeNeo4jLabel(String input) {
-        if (input == null || input.trim().isEmpty()) {
-            return "DefaultLabel";
+    public boolean mergeRelationships(String sourceArtifactName, String targetArtifactName,
+                                     String relationshipLabel, Relationship newRelationship,
+                                     String campaignLabel, String collectionName) {
+        try {
+            var driver = dbConnectionManager.getNeo4jRepository().getDriver();
+            if (driver == null) {
+                System.err.println("Neo4j driver not available");
+                return false;
+            }
+            
+            try (var session = driver.session()) {
+                // Perform merge in Neo4j
+                String mergedRelationshipId = session.executeWrite(tx -> {
+                    try {
+                        String sanitizedLabel = Neo4jRepository.sanitizeNeo4jLabel(campaignLabel) + "_Artifact";
+                        String sanitizedRelType = Neo4jRepository.sanitizeRelationshipType(relationshipLabel);
+                        
+                        // Get existing relationship to merge note_ids
+                        String getCypher = String.format(
+                            "MATCH (a:%s {name: $source_name})-[r:%s]->(b:%s {name: $target_name}) " +
+                            "RETURN r.note_ids AS note_ids, r.id AS id",
+                            sanitizedLabel, sanitizedRelType, sanitizedLabel
+                        );
+                        
+                        var getCursor = tx.run(getCypher,
+                            Map.of("source_name", sourceArtifactName,
+                                   "target_name", targetArtifactName));
+                        
+                        List<String> existingNoteIds = new ArrayList<>();
+                        String existingId = null;
+                        if (getCursor.hasNext()) {
+                            var record = getCursor.next();
+                            var noteIdsValue = record.get("note_ids");
+                            if (!noteIdsValue.isNull()) {
+                                existingNoteIds = noteIdsValue.asList(v -> v.asString());
+                            }
+                            existingId = record.get("id").asString();
+                        }
+                        
+                        // Merge note IDs
+                        List<String> mergedNoteIds = new ArrayList<>(existingNoteIds);
+                        for (String noteId : newRelationship.getNoteIds()) {
+                            if (!mergedNoteIds.contains(noteId)) {
+                                mergedNoteIds.add(noteId);
+                            }
+                        }
+                        
+                        // Update relationship with merged note_ids
+                        String updateCypher = String.format(
+                            "MATCH (a:%s {name: $source_name})-[r:%s]->(b:%s {name: $target_name}) " +
+                            "SET r.note_ids = $note_ids, " +
+                            "    r.description = CASE " +
+                            "      WHEN r.description IS NULL OR r.description = '' " +
+                            "      THEN $new_description " +
+                            "      WHEN $new_description IS NULL OR $new_description = '' " +
+                            "      THEN r.description " +
+                            "      ELSE r.description + ' | ' + $new_description " +
+                            "    END, " +
+                            "    r.updated_at = datetime() " +
+                            "RETURN r.id AS relationship_id",
+                            sanitizedLabel, sanitizedRelType, sanitizedLabel
+                        );
+                        
+                        var updateCursor = tx.run(updateCypher,
+                            Map.of("source_name", sourceArtifactName,
+                                   "target_name", targetArtifactName,
+                                   "note_ids", mergedNoteIds,
+                                   "new_description", newRelationship.getDescription() != null ? 
+                                       newRelationship.getDescription() : ""));
+                        
+                        if (updateCursor.hasNext()) {
+                            String relationshipId = updateCursor.next().get("relationship_id").asString();
+                            System.out.println("Successfully merged relationship " + newRelationship.getLabel() + 
+                                             " (ID: " + relationshipId + ")");
+                            return relationshipId;
+                        }
+                        
+                        return null;
+                        
+                    } catch (Exception e) {
+                        System.err.println("Error in relationship merge transaction: " + e.getMessage());
+                        return null;
+                    }
+                });
+                
+                if (mergedRelationshipId == null) {
+                    return false;
+                }
+                
+                // Delete new relationship's embedding from Qdrant
+                deleteRelationshipEmbedding(newRelationship.getId(), collectionName);
+                
+                // Update existing relationship's embedding in Qdrant
+                updateRelationshipEmbeddingAfterMerge(mergedRelationshipId, sourceArtifactName, 
+                                                     targetArtifactName, relationshipLabel, 
+                                                     campaignLabel, collectionName);
+                
+                return true;
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error merging relationships: " + e.getMessage());
+            return false;
         }
-        
-        return input.replaceAll("[^a-zA-Z0-9_]", "_")  // Replace invalid characters with underscore
-                   .replaceAll("_{2,}", "_")           // Replace multiple underscores with single
-                   .replaceAll("^_+|_+$", "")         // Remove leading/trailing underscores
-                   .substring(0, Math.min(input.length(), 100)); // Limit length to prevent very long labels
+    }
+    
+    /**
+     * Updates an artifact's embedding in Qdrant after merge operation.
+     * Fetches the updated artifact from Neo4j and generates a new embedding.
+     * Delegates to GraphEmbeddingService for update operation.
+     */
+    private void updateArtifactEmbeddingAfterMerge(String artifactId, String artifactName, 
+                                                   String campaignLabel, String collectionName) {
+        try {
+            var driver = dbConnectionManager.getNeo4jRepository().getDriver();
+            if (driver == null) {
+                System.err.println("Neo4j driver not available for embedding update");
+                return;
+            }
+            
+            try (var session = driver.session()) {
+                String sanitizedLabel = Neo4jRepository.sanitizeNeo4jLabel(campaignLabel) + "_Artifact";
+                
+                // Fetch updated artifact from Neo4j
+                String cypher = String.format(
+                    "MATCH (a:%s {id: $id}) " +
+                    "RETURN a.name AS name, a.type AS type, a.description AS description, " +
+                    "a.campaign_uuid AS campaign_uuid, a.note_ids AS note_ids",
+                    sanitizedLabel
+                );
+                
+                var result = session.run(cypher, Map.of("id", artifactId));
+                
+                if (result.hasNext()) {
+                    var record = result.next();
+                    
+                    // Reconstruct artifact for embedding generation
+                    Artifact updatedArtifact = new Artifact(
+                        record.get("name").asString(),
+                        record.get("type").asString(),
+                        record.get("campaign_uuid").asString(),
+                        null // noteId not needed for embedding
+                    );
+                    updatedArtifact.setId(artifactId);
+                    updatedArtifact.setDescription(record.get("description").asString(""));
+                    
+                    // Update embedding using GraphEmbeddingService
+                    graphEmbeddingService.updateArtifactEmbedding(updatedArtifact, collectionName);
+                    
+                    System.out.println("Updated embedding for merged artifact: " + artifactName);
+                }
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error updating artifact embedding after merge: " + e.getMessage());
+            // Best-effort - don't fail the merge operation
+        }
+    }
+    
+    /**
+     * Updates a relationship's embedding in Qdrant after merge operation.
+     * Fetches the updated relationship from Neo4j and generates a new embedding.
+     * Delegates to GraphEmbeddingService for update operation.
+     */
+    private void updateRelationshipEmbeddingAfterMerge(String relationshipId, String sourceArtifactName,
+                                                      String targetArtifactName, String relationshipLabel,
+                                                      String campaignLabel, String collectionName) {
+        try {
+            var driver = dbConnectionManager.getNeo4jRepository().getDriver();
+            if (driver == null) {
+                System.err.println("Neo4j driver not available for embedding update");
+                return;
+            }
+            
+            try (var session = driver.session()) {
+                String sanitizedLabel = Neo4jRepository.sanitizeNeo4jLabel(campaignLabel) + "_Artifact";
+                String sanitizedRelType = Neo4jRepository.sanitizeRelationshipType(relationshipLabel);
+                
+                // Fetch updated relationship from Neo4j
+                String cypher = String.format(
+                    "MATCH (a:%s {name: $source_name})-[r:%s]->(b:%s {name: $target_name}) " +
+                    "WHERE r.id = $id " +
+                    "RETURN r.label AS label, r.description AS description, r.reasoning AS reasoning, " +
+                    "r.campaign_uuid AS campaign_uuid, r.note_ids AS note_ids",
+                    sanitizedLabel, sanitizedRelType, sanitizedLabel
+                );
+                
+                var result = session.run(cypher, 
+                    Map.of("source_name", sourceArtifactName,
+                           "target_name", targetArtifactName,
+                           "id", relationshipId));
+                
+                if (result.hasNext()) {
+                    var record = result.next();
+                    
+                    // Reconstruct relationship for embedding generation
+                    Relationship updatedRelationship = new Relationship(
+                        sourceArtifactName,
+                        targetArtifactName,
+                        record.get("label").asString(),
+                        record.get("description").asString(""),
+                        record.get("reasoning").asString(""),
+                        new ArrayList<>(), // empty list for noteIds
+                        record.get("campaign_uuid").asString()
+                    );
+                    updatedRelationship.setId(relationshipId);
+                    
+                    // Update embedding using GraphEmbeddingService
+                    graphEmbeddingService.updateRelationshipEmbedding(updatedRelationship, collectionName);
+                    
+                    System.out.println("Updated embedding for merged relationship: " + relationshipLabel);
+                }
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error updating relationship embedding after merge: " + e.getMessage());
+            // Best-effort - don't fail the merge operation
+        }
+    }
+    
+    /**
+     * Deletes an artifact's embedding from Qdrant.
+     * Delegates to GraphEmbeddingService for consistent ID handling.
+     * Used when an artifact is merged into another one.
+     */
+    private void deleteArtifactEmbedding(String artifactId, String collectionName) {
+        try {
+            graphEmbeddingService.deleteEmbedding(artifactId, collectionName);
+        } catch (Exception e) {
+            System.err.println("Error deleting artifact embedding: " + e.getMessage());
+            // Best-effort - don't fail the merge operation
+        }
+    }
+    
+    /**
+     * Deletes a relationship's embedding from Qdrant.
+     * Delegates to GraphEmbeddingService for consistent ID handling.
+     * Used when a relationship is merged into another one.
+     */
+    private void deleteRelationshipEmbedding(String relationshipId, String collectionName) {
+        try {
+            graphEmbeddingService.deleteEmbedding(relationshipId, collectionName);
+        } catch (Exception e) {
+            System.err.println("Error deleting relationship embedding: " + e.getMessage());
+            // Best-effort - don't fail the merge operation
+        }
     }
 } 

@@ -9,6 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.database.Neo4jRepository;
 import static io.qdrant.client.PointIdFactory.id;
 import io.qdrant.client.QdrantClient;
 import static io.qdrant.client.ValueFactory.value;
@@ -82,7 +83,7 @@ public class CampaignManager {
             Campain newCampain = new Campain(
                     uuid.toString(),
                     campaignName,
-                    sanitizeNeo4jLabel(campaignName + "CampaignLabel" + uuid.toString()),
+                    Neo4jRepository.sanitizeNeo4jLabel(campaignName + "CampaignLabel" + uuid.toString()),
                     campaignName + "CampaignCollection" + uuid.toString(),
                     dbConnectionManager.getSqliteRepository().getDefaultUserId(),
                     "Campaign created for " + campaignName
@@ -245,25 +246,6 @@ public class CampaignManager {
     }
     
     /**
-     * Sanitizes a string to be used as a Neo4j label.
-     * Neo4j labels cannot contain spaces, hyphens, or special characters.
-     * Only letters, numbers, and underscores are allowed.
-     * 
-     * @param input the input string to sanitize
-     * @return sanitized label suitable for Neo4j
-     */
-    private String sanitizeNeo4jLabel(String input) {
-        if (input == null || input.trim().isEmpty()) {
-            return "DefaultLabel";
-        }
-        
-        return input.replaceAll("[^a-zA-Z0-9_]", "_")  // Replace invalid characters with underscore
-                   .replaceAll("_{2,}", "_")           // Replace multiple underscores with single
-                   .replaceAll("^_+|_+$", "")         // Remove leading/trailing underscores
-                   .substring(0, Math.min(input.length(), 100)); // Limit length to prevent very long labels
-    }
-    
-    /**
      * Adds a note with its embedding to the specified campaign.
      * Handles Qdrant storage operations and collection management.
      * 
@@ -355,6 +337,7 @@ public class CampaignManager {
                     .putPayload("updated_at", value(note.getUpdatedAt().toString()))
                     .putPayload("is_override", value(note.isOverride()))
                     .putPayload("is_overridden", value(note.isOverridden()))
+                    .putPayload("type", value("note"))  // Type tag for filtering in Phase 1
                     .build();
             
             // Add override reason if present

@@ -53,6 +53,24 @@ const NoteCreateConfirmDialog: React.FC<NoteCreateConfirmDialogProps> = ({
             </div>
           </div>
 
+          {/* Deduplication Summary */}
+          {(data.mergedArtifactCount > 0 || data.mergedRelationshipCount > 0) && (
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md">
+              <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-blue-500" />
+                Deduplication Summary
+              </p>
+              <div className="text-xs text-muted-foreground space-y-1">
+                {data.mergedArtifactCount > 0 && (
+                  <p>• Merged {data.mergedArtifactCount} duplicate artifact{data.mergedArtifactCount !== 1 ? 's' : ''}</p>
+                )}
+                {data.mergedRelationshipCount > 0 && (
+                  <p>• Merged {data.mergedRelationshipCount} duplicate relationship{data.mergedRelationshipCount !== 1 ? 's' : ''}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {data.artifacts && data.artifacts.length > 0 && (
             <div>
               <h4 className="font-medium text-sm mb-2">Extracted Artifacts</h4>
