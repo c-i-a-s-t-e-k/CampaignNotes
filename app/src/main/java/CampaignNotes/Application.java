@@ -4,10 +4,12 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.llm.OpenAIEmbeddingService;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.otel.OpenTelemetryConfig;
+import io.github.cdimascio.dotenv.Dotenv;
 
 /**
  * Main Spring Boot application class for CampaignNotes REST API.
@@ -64,13 +66,34 @@ public class Application {
     }
     
     /**
+     * Bean for DeduplicationConfig.
+     */
+    @Bean
+    public DeduplicationConfig deduplicationConfig() {
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+        return new DeduplicationConfig(dotenv);
+    }
+    
+    /**
+     * Bean for GraphEmbeddingService.
+     */
+    @Bean
+    public GraphEmbeddingService graphEmbeddingService(OpenAIEmbeddingService embeddingService,
+                                                       DatabaseConnectionManager dbConnectionManager) {
+        return new GraphEmbeddingService(embeddingService, dbConnectionManager);
+    }
+    
+    /**
      * Bean for ArtifactGraphService.
      */
     @Bean
     public ArtifactGraphService artifactGraphService(OpenAILLMService llmService, 
                                                      ArtifactCategoryService categoryService,
-                                                     DatabaseConnectionManager dbConnectionManager) {
-        return new ArtifactGraphService(llmService, categoryService, dbConnectionManager);
+                                                     DatabaseConnectionManager dbConnectionManager,
+                                                     GraphEmbeddingService graphEmbeddingService,
+                                                     DeduplicationConfig deduplicationConfig) {
+        return new ArtifactGraphService(llmService, categoryService, dbConnectionManager,
+                                       graphEmbeddingService, deduplicationConfig);
     }
     
     /**

@@ -14,10 +14,6 @@ import com.google.gson.JsonParser;
 import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.database.Neo4jRepository;
-import CampaignNotes.deduplication.CandidateFinder;
-import CampaignNotes.deduplication.DeduplicationCoordinator;
-import CampaignNotes.deduplication.DeduplicationLLMService;
-import CampaignNotes.dto.deduplication.MergeProposal;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.LangfuseClient;
 import CampaignNotes.tracking.otel.OTelGenerationObservation;
@@ -26,7 +22,6 @@ import CampaignNotes.tracking.otel.OTelTraceManager.OTelTrace;
 import model.Artifact;
 import model.ArtifactProcessingResult;
 import model.Campain;
-import model.DeduplicationResult;
 import model.LLMResponse;
 import model.Note;
 import model.PromptContent;
@@ -66,8 +61,11 @@ public class ArtifactGraphService {
         this.traceManager = OTelTraceManager.getInstance();
         this.categoryService = new ArtifactCategoryService();
         this.dbConnectionManager = new DatabaseConnectionManager();
-        this.graphEmbeddingService = new GraphEmbeddingService(llmService, dbConnectionManager);
-        this.deduplicationConfig = new DeduplicationConfig();
+        this.graphEmbeddingService = new GraphEmbeddingService(
+            new CampaignNotes.llm.OpenAIEmbeddingService(), 
+            dbConnectionManager);
+        io.github.cdimascio.dotenv.Dotenv dotenv = io.github.cdimascio.dotenv.Dotenv.configure().ignoreIfMissing().load();
+        this.deduplicationConfig = new CampaignNotes.config.DeduplicationConfig(dotenv);
         this.gson = new Gson();
     }
     

@@ -1,18 +1,17 @@
 package CampaignNotes.deduplication;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
 
 import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.dto.deduplication.ArtifactCandidate;
 import CampaignNotes.dto.deduplication.RelationshipCandidate;
+import static io.qdrant.client.ConditionFactory.matchKeyword;
 import io.qdrant.client.QdrantClient;
-import io.qdrant.client.grpc.Collections.PointStruct;
-import io.qdrant.client.grpc.Collections.SearchPoints;
+import io.qdrant.client.grpc.Points.Filter;
+import io.qdrant.client.grpc.Points.ScoredPoint;
+import io.qdrant.client.grpc.Points.SearchPoints;
 
 /**
  * Service for finding candidate artifacts and relationships in Phase 1 (ANN search)
@@ -66,17 +65,24 @@ public class CandidateFinder {
                     .map(Double::floatValue)
                     .toList();
             
-            // Build search request with filter for artifact type and campaign
-            var searchResult = qdrantClient.searchAsync(
-                campaignCollectionName,
-                embeddingFloats,
-                Map.of("type", "artifact", "campaign_uuid", campaignUuid),
-                config.getCandidateLimit(),
-                null
-            ).get();
+            // Build filter for artifact type and campaign
+            Filter filter = Filter.newBuilder()
+                    .addMust(matchKeyword("type", "artifact"))
+                    .build();
+            
+            // Build search request
+            SearchPoints searchRequest = SearchPoints.newBuilder()
+                    .setCollectionName(campaignCollectionName)
+                    .addAllVector(embeddingFloats)
+                    .setLimit(config.getCandidateLimit())
+                    .setFilter(filter)
+                    .setWithPayload(io.qdrant.client.WithPayloadSelectorFactory.enable(true))
+                    .build();
+            
+            List<ScoredPoint> searchResult = qdrantClient.searchAsync(searchRequest).get();
             
             // Process search results
-            for (var scoredPoint : searchResult) {
+            for (ScoredPoint scoredPoint : searchResult) {
                 double similarity = scoredPoint.getScore();
                 
                 // Filter by similarity threshold
@@ -85,16 +91,16 @@ public class CandidateFinder {
                 }
                 
                 // Extract payload information
-                var payload = scoredPoint.getPayload();
+                var payloadMap = scoredPoint.getPayloadMap();
                 
-                String artifactId = payload.get("artifact_id") != null ? 
-                    payload.get("artifact_id").getStringValue() : "";
-                String name = payload.get("name") != null ? 
-                    payload.get("name").getStringValue() : "";
-                String type = payload.get("artifact_type") != null ? 
-                    payload.get("artifact_type").getStringValue() : "";
-                String description = payload.get("description") != null ? 
-                    payload.get("description").getStringValue() : "";
+                String artifactId = payloadMap.containsKey("artifact_id") ? 
+                    payloadMap.get("artifact_id").getStringValue() : "";
+                String name = payloadMap.containsKey("name") ? 
+                    payloadMap.get("name").getStringValue() : "";
+                String type = payloadMap.containsKey("artifact_type") ? 
+                    payloadMap.get("artifact_type").getStringValue() : "";
+                String description = payloadMap.containsKey("description") ? 
+                    payloadMap.get("description").getStringValue() : "";
                 
                 if (!artifactId.isEmpty() && !name.isEmpty()) {
                     ArtifactCandidate candidate = new ArtifactCandidate(artifactId, name, type, 
@@ -103,11 +109,11 @@ public class CandidateFinder {
                 }
             }
             
-        } catch (InterruptedException | ExecutionException e) {
-            System.err.println("Error searching for similar artifacts: " + e.getMessage());
-            Thread.currentThread().interrupt();
         } catch (Exception e) {
             System.err.println("Error searching for similar artifacts: " + e.getMessage());
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
         }
         
         return candidates;
@@ -142,17 +148,24 @@ public class CandidateFinder {
                     .map(Double::floatValue)
                     .toList();
             
-            // Build search request with filter for relation type and campaign
-            var searchResult = qdrantClient.searchAsync(
-                campaignCollectionName,
-                embeddingFloats,
-                Map.of("type", "relation", "campaign_uuid", campaignUuid),
-                config.getCandidateLimit(),
-                null
-            ).get();
+            // Build filter for relation type and campaign
+            Filter filter = Filter.newBuilder()
+                    .addMust(matchKeyword("type", "relation"))
+                    .build();
+            
+            // Build search request
+            SearchPoints searchRequest = SearchPoints.newBuilder()
+                    .setCollectionName(campaignCollectionName)
+                    .addAllVector(embeddingFloats)
+                    .setLimit(config.getCandidateLimit())
+                    .setFilter(filter)
+                    .setWithPayload(io.qdrant.client.WithPayloadSelectorFactory.enable(true))
+                    .build();
+            
+            List<ScoredPoint> searchResult = qdrantClient.searchAsync(searchRequest).get();
             
             // Process search results
-            for (var scoredPoint : searchResult) {
+            for (ScoredPoint scoredPoint : searchResult) {
                 double similarity = scoredPoint.getScore();
                 
                 // Filter by similarity threshold
@@ -161,18 +174,18 @@ public class CandidateFinder {
                 }
                 
                 // Extract payload information
-                var payload = scoredPoint.getPayload();
+                var payloadMap = scoredPoint.getPayloadMap();
                 
-                String relationshipId = payload.get("relationship_id") != null ? 
-                    payload.get("relationship_id").getStringValue() : "";
-                String source = payload.get("source") != null ? 
-                    payload.get("source").getStringValue() : "";
-                String target = payload.get("target") != null ? 
-                    payload.get("target").getStringValue() : "";
-                String label = payload.get("label") != null ? 
-                    payload.get("label").getStringValue() : "";
-                String description = payload.get("description") != null ? 
-                    payload.get("description").getStringValue() : "";
+                String relationshipId = payloadMap.containsKey("relationship_id") ? 
+                    payloadMap.get("relationship_id").getStringValue() : "";
+                String source = payloadMap.containsKey("source") ? 
+                    payloadMap.get("source").getStringValue() : "";
+                String target = payloadMap.containsKey("target") ? 
+                    payloadMap.get("target").getStringValue() : "";
+                String label = payloadMap.containsKey("label") ? 
+                    payloadMap.get("label").getStringValue() : "";
+                String description = payloadMap.containsKey("description") ? 
+                    payloadMap.get("description").getStringValue() : "";
                 
                 if (!relationshipId.isEmpty() && !source.isEmpty() && !target.isEmpty()) {
                     RelationshipCandidate candidate = new RelationshipCandidate(relationshipId, source, target,
@@ -181,11 +194,11 @@ public class CandidateFinder {
                 }
             }
             
-        } catch (InterruptedException | ExecutionException e) {
-            System.err.println("Error searching for similar relationships: " + e.getMessage());
-            Thread.currentThread().interrupt();
         } catch (Exception e) {
             System.err.println("Error searching for similar relationships: " + e.getMessage());
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
         }
         
         return candidates;

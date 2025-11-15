@@ -102,8 +102,7 @@ public class DeduplicationCoordinator {
                 
                 if (!candidates.isEmpty()) {
                     allCandidates.put(artifact.getId(), candidates);
-                    trace.addEvent("artifact_candidates_found",
-                        Map.of("artifact_id", artifact.getId(), "candidate_count", String.valueOf(candidates.size())));
+                    trace.addEvent("artifact_candidates_found");
                 }
                 
             } catch (Exception e) {
@@ -142,10 +141,7 @@ public class DeduplicationCoordinator {
                 if (decision.isSame()) {
                     hasMerge = true;
                     decisions.add(decision);
-                    trace.addEvent("artifact_merge_candidate_found",
-                        Map.of("new_artifact_id", artifact.getId(),
-                               "candidate_id", candidate.getArtifactId(),
-                               "confidence", String.valueOf(decision.getConfidence())));
+                    trace.addEvent("artifact_merge_candidate_found");
                 }
             }
             
@@ -218,8 +214,7 @@ public class DeduplicationCoordinator {
                 
                 if (!candidates.isEmpty()) {
                     allCandidates.put(relationship.getId(), candidates);
-                    trace.addEvent("relationship_candidates_found",
-                        Map.of("relationship_id", relationship.getId(), "candidate_count", String.valueOf(candidates.size())));
+                    trace.addEvent("relationship_candidates_found");
                 }
                 
             } catch (Exception e) {
@@ -258,10 +253,7 @@ public class DeduplicationCoordinator {
                 if (decision.isSame()) {
                     hasMerge = true;
                     decisions.add(decision);
-                    trace.addEvent("relationship_merge_candidate_found",
-                        Map.of("new_relationship_id", relationship.getId(),
-                               "candidate_id", candidate.getRelationshipId(),
-                               "confidence", String.valueOf(decision.getConfidence())));
+                    trace.addEvent("relationship_merge_candidate_found");
                 }
             }
             

@@ -3,8 +3,10 @@ package CampaignNotes;
 import java.util.List;
 import java.util.Scanner;
 
+import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.llm.OpenAIEmbeddingService;
+import io.github.cdimascio.dotenv.Dotenv;
 import model.Campain;
 import model.Note;
 
@@ -37,7 +39,15 @@ public class TerminalInterface {
         // Initialize services with proper dependency injection
         this.campaignManager = new CampaignManager(dbConnectionManager);
         ArtifactCategoryService categoryService = new ArtifactCategoryService(dbConnectionManager);
-        ArtifactGraphService artifactService = new ArtifactGraphService(llmService, categoryService, dbConnectionManager);
+        
+        // Initialize deduplication dependencies
+        Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
+        DeduplicationConfig deduplicationConfig = new DeduplicationConfig(dotenv);
+        GraphEmbeddingService graphEmbeddingService = new GraphEmbeddingService(embeddingService, dbConnectionManager);
+        
+        ArtifactGraphService artifactService = new ArtifactGraphService(llmService, categoryService, 
+                                                                       dbConnectionManager, graphEmbeddingService, 
+                                                                       deduplicationConfig);
         this.noteService = new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager);
         this.searchService = new SemantickSearchService(dbConnectionManager, embeddingService);
         
