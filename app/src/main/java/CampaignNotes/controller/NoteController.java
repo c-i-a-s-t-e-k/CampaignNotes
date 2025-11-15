@@ -293,6 +293,37 @@ public class NoteController {
                 .filter(r -> !mergedRelationshipIds.contains(r.getId()))
                 .collect(java.util.stream.Collectors.toList());
             
+            // 5.1 Build artifact remapping map to fix relationship sources/targets after merge
+            // This prevents lost relationships when merged artifacts are referenced
+            java.util.Map<String, String> artifactRemapping = new java.util.HashMap<>();
+            for (MergeProposal proposal : approvedProposals) {
+                if (proposal.isApproved() && "artifact".equals(proposal.getItemType())) {
+                    // Map new artifact name to existing artifact name
+                    artifactRemapping.put(proposal.getNewItemName(), proposal.getExistingItemName());
+                    LOGGER.debug("Artifact remapping: {} -> {}", 
+                               proposal.getNewItemName(), proposal.getExistingItemName());
+                }
+            }
+            
+            // 5.2 Apply remapping to relationships before saving
+            // If a relationship's source or target was merged, update it to point to the existing artifact
+            if (!artifactRemapping.isEmpty()) {
+                for (Relationship rel : newRelationships) {
+                    if (artifactRemapping.containsKey(rel.getSourceArtifactName())) {
+                        String newSourceName = artifactRemapping.get(rel.getSourceArtifactName());
+                        LOGGER.debug("Remapping relationship source: {} -> {} for relationship {}",
+                                   rel.getSourceArtifactName(), newSourceName, rel.getLabel());
+                        rel.setSourceArtifactName(newSourceName);
+                    }
+                    if (artifactRemapping.containsKey(rel.getTargetArtifactName())) {
+                        String newTargetName = artifactRemapping.get(rel.getTargetArtifactName());
+                        LOGGER.debug("Remapping relationship target: {} -> {} for relationship {}",
+                                   rel.getTargetArtifactName(), newTargetName, rel.getLabel());
+                        rel.setTargetArtifactName(newTargetName);
+                    }
+                }
+            }
+            
             // 5. Save new artifacts/relationships to Neo4j with embeddings
             boolean saved = artifactService.saveToNeo4j(newArtifacts, newRelationships, campaign,
                                                        campaign.getQuadrantCollectionName());

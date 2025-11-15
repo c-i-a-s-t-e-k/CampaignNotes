@@ -1033,6 +1033,7 @@ public class ArtifactGraphService {
     /**
      * Updates an artifact's embedding in Qdrant after merge operation.
      * Fetches the updated artifact from Neo4j and generates a new embedding.
+     * Delegates to GraphEmbeddingService for update operation.
      */
     private void updateArtifactEmbeddingAfterMerge(String artifactId, String artifactName, 
                                                    String campaignLabel, String collectionName) {
@@ -1069,11 +1070,8 @@ public class ArtifactGraphService {
                     updatedArtifact.setId(artifactId);
                     updatedArtifact.setDescription(record.get("description").asString(""));
                     
-                    // Generate and store new embedding
-                    var embeddingResult = graphEmbeddingService.generateArtifactEmbedding(updatedArtifact);
-                    graphEmbeddingService.storeArtifactEmbedding(updatedArtifact, 
-                                                                embeddingResult.getEmbedding(), 
-                                                                collectionName);
+                    // Update embedding using GraphEmbeddingService
+                    graphEmbeddingService.updateArtifactEmbedding(updatedArtifact, collectionName);
                     
                     System.out.println("Updated embedding for merged artifact: " + artifactName);
                 }
@@ -1088,6 +1086,7 @@ public class ArtifactGraphService {
     /**
      * Updates a relationship's embedding in Qdrant after merge operation.
      * Fetches the updated relationship from Neo4j and generates a new embedding.
+     * Delegates to GraphEmbeddingService for update operation.
      */
     private void updateRelationshipEmbeddingAfterMerge(String relationshipId, String sourceArtifactName,
                                                       String targetArtifactName, String relationshipLabel,
@@ -1132,11 +1131,8 @@ public class ArtifactGraphService {
                     );
                     updatedRelationship.setId(relationshipId);
                     
-                    // Generate and store new embedding
-                    var embeddingResult = graphEmbeddingService.generateRelationshipEmbedding(updatedRelationship);
-                    graphEmbeddingService.storeRelationshipEmbedding(updatedRelationship, 
-                                                                    embeddingResult.getEmbedding(), 
-                                                                    collectionName);
+                    // Update embedding using GraphEmbeddingService
+                    graphEmbeddingService.updateRelationshipEmbedding(updatedRelationship, collectionName);
                     
                     System.out.println("Updated embedding for merged relationship: " + relationshipLabel);
                 }
@@ -1150,27 +1146,12 @@ public class ArtifactGraphService {
     
     /**
      * Deletes an artifact's embedding from Qdrant.
+     * Delegates to GraphEmbeddingService for consistent ID handling.
      * Used when an artifact is merged into another one.
      */
     private void deleteArtifactEmbedding(String artifactId, String collectionName) {
         try {
-            var qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
-            if (qdrantClient == null) {
-                System.err.println("Qdrant client not available for deletion");
-                return;
-            }
-            
-            // Generate numeric ID from artifact ID (same way as storage)
-            long numericId = Math.abs(artifactId.hashCode());
-            
-            // Delete point from Qdrant
-            qdrantClient.deleteAsync(
-                collectionName,
-                List.of(io.qdrant.client.PointIdFactory.id(numericId))
-            ).get();
-            
-            System.out.println("Deleted embedding for merged artifact: " + artifactId);
-            
+            graphEmbeddingService.deleteEmbedding(artifactId, collectionName);
         } catch (Exception e) {
             System.err.println("Error deleting artifact embedding: " + e.getMessage());
             // Best-effort - don't fail the merge operation
@@ -1179,27 +1160,12 @@ public class ArtifactGraphService {
     
     /**
      * Deletes a relationship's embedding from Qdrant.
+     * Delegates to GraphEmbeddingService for consistent ID handling.
      * Used when a relationship is merged into another one.
      */
     private void deleteRelationshipEmbedding(String relationshipId, String collectionName) {
         try {
-            var qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
-            if (qdrantClient == null) {
-                System.err.println("Qdrant client not available for deletion");
-                return;
-            }
-            
-            // Generate numeric ID from relationship ID (same way as storage)
-            long numericId = Math.abs(relationshipId.hashCode());
-            
-            // Delete point from Qdrant
-            qdrantClient.deleteAsync(
-                collectionName,
-                List.of(io.qdrant.client.PointIdFactory.id(numericId))
-            ).get();
-            
-            System.out.println("Deleted embedding for merged relationship: " + relationshipId);
-            
+            graphEmbeddingService.deleteEmbedding(relationshipId, collectionName);
         } catch (Exception e) {
             System.err.println("Error deleting relationship embedding: " + e.getMessage());
             // Best-effort - don't fail the merge operation

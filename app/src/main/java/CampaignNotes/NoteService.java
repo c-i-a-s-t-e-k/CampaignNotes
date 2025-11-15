@@ -337,6 +337,45 @@ public class NoteService {
                             List<Artifact> newArtifacts = artifactDedup.getNewArtifacts();
                             List<Relationship> newRelationships = relationshipDedup.getNewRelationships();
                             
+                            // Build artifact remapping map to fix relationship sources/targets after auto-merge
+                            // This prevents lost relationships when merged artifacts are referenced
+                            Map<String, String> artifactRemapping = new java.util.HashMap<>();
+                            for (Map.Entry<String, List<DeduplicationDecision>> entry : 
+                                 artifactDedup.getArtifactDecisions().entrySet()) {
+                                List<DeduplicationDecision> decisions = entry.getValue();
+                                
+                                for (DeduplicationDecision decision : decisions) {
+                                    if (decision.isSame() && decision.shouldAutoMerge(confidenceThreshold)) {
+                                        // Map new artifact name to existing candidate name
+                                        Artifact newArtifact = findArtifactById(artifactResult.getArtifacts(), entry.getKey());
+                                        if (newArtifact != null) {
+                                            artifactRemapping.put(newArtifact.getName(), decision.getCandidateName());
+                                            System.out.println("Auto-merge artifact remapping: " + newArtifact.getName() + 
+                                                             " -> " + decision.getCandidateName());
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Apply remapping to relationships before saving
+                            // If a relationship's source or target was auto-merged, update it to point to the existing artifact
+                            if (!artifactRemapping.isEmpty()) {
+                                for (Relationship rel : newRelationships) {
+                                    if (artifactRemapping.containsKey(rel.getSourceArtifactName())) {
+                                        String newSourceName = artifactRemapping.get(rel.getSourceArtifactName());
+                                        System.out.println("Remapping relationship source: " + rel.getSourceArtifactName() + 
+                                                         " -> " + newSourceName + " for relationship " + rel.getLabel());
+                                        rel.setSourceArtifactName(newSourceName);
+                                    }
+                                    if (artifactRemapping.containsKey(rel.getTargetArtifactName())) {
+                                        String newTargetName = artifactRemapping.get(rel.getTargetArtifactName());
+                                        System.out.println("Remapping relationship target: " + rel.getTargetArtifactName() + 
+                                                         " -> " + newTargetName + " for relationship " + rel.getLabel());
+                                        rel.setTargetArtifactName(newTargetName);
+                                    }
+                                }
+                            }
+                            
                             boolean saved = artifactService.saveToNeo4j(newArtifacts, newRelationships, campaign,
                                                                        campaign.getQuadrantCollectionName());
                             

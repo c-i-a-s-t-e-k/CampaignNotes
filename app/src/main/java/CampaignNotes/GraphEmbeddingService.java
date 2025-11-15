@@ -133,8 +133,9 @@ public class GraphEmbeddingService {
                     .map(Double::floatValue)
                     .toList();
             
-            // Generate numeric ID from artifact ID
-            long numericId = Math.abs(artifact.getId().hashCode());
+            // Generate deterministic numeric ID from artifact UUID
+            // Using UUID's hashCode provides stable mapping across restarts (unlike Math.abs)
+            long numericId = java.util.UUID.fromString(artifact.getId()).getMostSignificantBits() & Long.MAX_VALUE;
             
             // Create point with artifact data and type tag
             PointStruct point = PointStruct.newBuilder()
@@ -186,8 +187,9 @@ public class GraphEmbeddingService {
                     .map(Double::floatValue)
                     .toList();
             
-            // Generate numeric ID from relationship ID
-            long numericId = Math.abs(relationship.getId().hashCode());
+            // Generate deterministic numeric ID from relationship UUID
+            // Using UUID's getMostSignificantBits provides stable mapping across restarts
+            long numericId = java.util.UUID.fromString(relationship.getId()).getMostSignificantBits() & Long.MAX_VALUE;
             
             // Create point with relationship data and type tag
             PointStruct point = PointStruct.newBuilder()
@@ -221,7 +223,7 @@ public class GraphEmbeddingService {
     
     /**
      * Generates and stores embeddings for multiple artifacts in batch.
-     * More efficient than storing them individually.
+     * Uses bulk upsert for better performance - single Qdrant call for all points.
      * 
      * @param artifacts list of artifacts to process
      * @param campaignCollectionName the Qdrant collection name
@@ -232,24 +234,65 @@ public class GraphEmbeddingService {
             return 0;
         }
         
-        int successCount = 0;
-        for (Artifact artifact : artifacts) {
-            try {
-                EmbeddingResult result = generateArtifactEmbedding(artifact);
-                if (storeArtifactEmbedding(artifact, result.getEmbedding(), campaignCollectionName)) {
-                    successCount++;
-                }
-            } catch (Exception e) {
-                System.err.println("Error processing artifact " + artifact.getId() + ": " + e.getMessage());
+        try {
+            QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
+            if (qdrantClient == null) {
+                System.err.println("Qdrant client not available");
+                return 0;
             }
+            
+            // Generate all embeddings and create points list
+            java.util.List<PointStruct> points = new java.util.ArrayList<>();
+            
+            for (Artifact artifact : artifacts) {
+                try {
+                    EmbeddingResult result = generateArtifactEmbedding(artifact);
+                    List<Float> embeddingFloats = result.getEmbedding().stream()
+                        .map(Double::floatValue)
+                        .toList();
+                    
+                    // Generate deterministic numeric ID from artifact UUID
+                    long numericId = java.util.UUID.fromString(artifact.getId()).getMostSignificantBits() & Long.MAX_VALUE;
+                    
+                    PointStruct point = PointStruct.newBuilder()
+                        .setId(id(numericId))
+                        .setVectors(vectors(embeddingFloats))
+                        .putPayload("artifact_id", value(artifact.getId()))
+                        .putPayload("name", value(artifact.getName()))
+                        .putPayload("type", value("artifact"))
+                        .putPayload("artifact_type", value(artifact.getType()))
+                        .putPayload("description", value(artifact.getDescription() != null ? artifact.getDescription() : ""))
+                        .putPayload("campaign_uuid", value(artifact.getCampaignUuid()))
+                        .putPayload("created_at", value(artifact.getCreatedAt().toString()))
+                        .build();
+                    
+                    points.add(point);
+                } catch (Exception e) {
+                    System.err.println("Error processing artifact " + artifact.getId() + ": " + e.getMessage());
+                }
+            }
+            
+            // Single bulk upsert for all points
+            if (!points.isEmpty()) {
+                qdrantClient.upsertAsync(campaignCollectionName, points).get();
+                System.out.println("Batch stored " + points.size() + " artifact embeddings");
+            }
+            
+            return points.size();
+            
+        } catch (InterruptedException | ExecutionException e) {
+            System.err.println("Error in batch upsert: " + e.getMessage());
+            Thread.currentThread().interrupt();
+            return 0;
+        } catch (Exception e) {
+            System.err.println("Error in batch upsert: " + e.getMessage());
+            return 0;
         }
-        
-        return successCount;
     }
     
     /**
      * Generates and stores embeddings for multiple relationships in batch.
-     * More efficient than storing them individually.
+     * Uses bulk upsert for better performance - single Qdrant call for all points.
      * 
      * @param relationships list of relationships to process
      * @param campaignCollectionName the Qdrant collection name
@@ -260,19 +303,136 @@ public class GraphEmbeddingService {
             return 0;
         }
         
-        int successCount = 0;
-        for (Relationship relationship : relationships) {
-            try {
-                EmbeddingResult result = generateRelationshipEmbedding(relationship);
-                if (storeRelationshipEmbedding(relationship, result.getEmbedding(), campaignCollectionName)) {
-                    successCount++;
-                }
-            } catch (Exception e) {
-                System.err.println("Error processing relationship " + relationship.getId() + ": " + e.getMessage());
+        try {
+            QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
+            if (qdrantClient == null) {
+                System.err.println("Qdrant client not available");
+                return 0;
             }
+            
+            // Generate all embeddings and create points list
+            java.util.List<PointStruct> points = new java.util.ArrayList<>();
+            
+            for (Relationship relationship : relationships) {
+                try {
+                    EmbeddingResult result = generateRelationshipEmbedding(relationship);
+                    List<Float> embeddingFloats = result.getEmbedding().stream()
+                        .map(Double::floatValue)
+                        .toList();
+                    
+                    // Generate deterministic numeric ID from relationship UUID
+                    long numericId = java.util.UUID.fromString(relationship.getId()).getMostSignificantBits() & Long.MAX_VALUE;
+                    
+                    PointStruct point = PointStruct.newBuilder()
+                        .setId(id(numericId))
+                        .setVectors(vectors(embeddingFloats))
+                        .putPayload("relationship_id", value(relationship.getId()))
+                        .putPayload("source", value(relationship.getSourceArtifactName()))
+                        .putPayload("target", value(relationship.getTargetArtifactName()))
+                        .putPayload("label", value(relationship.getLabel()))
+                        .putPayload("type", value("relation"))
+                        .putPayload("description", value(relationship.getDescription() != null ? relationship.getDescription() : ""))
+                        .putPayload("reasoning", value(relationship.getReasoning() != null ? relationship.getReasoning() : ""))
+                        .putPayload("campaign_uuid", value(relationship.getCampaignUuid()))
+                        .putPayload("created_at", value(relationship.getCreatedAt().toString()))
+                        .build();
+                    
+                    points.add(point);
+                } catch (Exception e) {
+                    System.err.println("Error processing relationship " + relationship.getId() + ": " + e.getMessage());
+                }
+            }
+            
+            // Single bulk upsert for all points
+            if (!points.isEmpty()) {
+                qdrantClient.upsertAsync(campaignCollectionName, points).get();
+                System.out.println("Batch stored " + points.size() + " relationship embeddings");
+            }
+            
+            return points.size();
+            
+        } catch (InterruptedException | ExecutionException e) {
+            System.err.println("Error in batch upsert: " + e.getMessage());
+            Thread.currentThread().interrupt();
+            return 0;
+        } catch (Exception e) {
+            System.err.println("Error in batch upsert: " + e.getMessage());
+            return 0;
         }
-        
-        return successCount;
+    }
+    
+    /**
+     * Deletes an embedding from Qdrant by UUID.
+     * Used when an artifact or relationship is merged and its embedding should be removed.
+     * 
+     * @param pointUuid the UUID of the point to delete
+     * @param campaignCollectionName the Qdrant collection name
+     * @return true if deleted successfully, false otherwise
+     */
+    public boolean deleteEmbedding(String pointUuid, String campaignCollectionName) {
+        try {
+            QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
+            if (qdrantClient == null) {
+                System.err.println("Qdrant client not available");
+                return false;
+            }
+            
+            // Generate deterministic numeric ID from UUID
+            long numericId = java.util.UUID.fromString(pointUuid).getMostSignificantBits() & Long.MAX_VALUE;
+            
+            qdrantClient.deleteAsync(
+                campaignCollectionName,
+                List.of(io.qdrant.client.PointIdFactory.id(numericId))
+            ).get();
+            
+            System.out.println("Deleted embedding: " + pointUuid);
+            return true;
+        } catch (Exception e) {
+            System.err.println("Error deleting embedding: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Updates an artifact's embedding in Qdrant after modifications.
+     * Generates a new embedding and upserts it (overwriting the old one).
+     * 
+     * @param artifact the updated artifact
+     * @param campaignCollectionName the Qdrant collection name
+     * @return true if updated successfully, false otherwise
+     */
+    public boolean updateArtifactEmbedding(Artifact artifact, String campaignCollectionName) {
+        try {
+            // Generate new embedding
+            EmbeddingResult result = generateArtifactEmbedding(artifact);
+            
+            // Upsert will overwrite existing point with same ID
+            return storeArtifactEmbedding(artifact, result.getEmbedding(), campaignCollectionName);
+        } catch (Exception e) {
+            System.err.println("Error updating artifact embedding: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Updates a relationship's embedding in Qdrant after modifications.
+     * Generates a new embedding and upserts it (overwriting the old one).
+     * 
+     * @param relationship the updated relationship
+     * @param campaignCollectionName the Qdrant collection name
+     * @return true if updated successfully, false otherwise
+     */
+    public boolean updateRelationshipEmbedding(Relationship relationship, String campaignCollectionName) {
+        try {
+            // Generate new embedding
+            EmbeddingResult result = generateRelationshipEmbedding(relationship);
+            
+            // Upsert will overwrite existing point with same ID
+            return storeRelationshipEmbedding(relationship, result.getEmbedding(), campaignCollectionName);
+        } catch (Exception e) {
+            System.err.println("Error updating relationship embedding: " + e.getMessage());
+            return false;
+        }
     }
 }
 
