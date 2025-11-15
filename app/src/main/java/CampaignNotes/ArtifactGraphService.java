@@ -105,7 +105,9 @@ public class ArtifactGraphService {
      * @param note the note to process
      * @param campaign the campaign the note belongs to
      * @return ArtifactProcessingResult with extracted artifacts and relationships
+     * @deprecated Use extractArtifactsAndRelationships() and saveToNeo4j() separately for deduplication workflow
      */
+    @Deprecated
     public ArtifactProcessingResult processNoteArtifacts(Note note, Campain campaign) {
         long startTime = System.currentTimeMillis();
         
@@ -193,6 +195,116 @@ public class ArtifactGraphService {
             String errorMessage = "Error processing artifacts: " + e.getMessage();
             System.err.println(errorMessage);
             e.printStackTrace();
+            
+            return new ArtifactProcessingResult(errorMessage, note.getId(), campaign.getUuid());
+        }
+    }
+    
+    /**
+     * Extracts artifacts and relationships from a note without saving to Neo4j.
+     * This method allows deduplication to occur before saving.
+     * 
+     * Uses OpenTelemetry for tracking:
+     * - Creates a trace for the entire workflow
+     * - Creates observations for NAE and ARE operations
+     * - Automatically reports success/failure status
+     * 
+     * @param note the note to process
+     * @param campaign the campaign the note belongs to
+     * @param trace OpenTelemetry trace for tracking (optional, will create new if null)
+     * @return ArtifactProcessingResult with extracted artifacts and relationships (not saved to Neo4j)
+     */
+    public ArtifactProcessingResult extractArtifactsAndRelationships(Note note, Campain campaign, OTelTrace trace) {
+        long startTime = System.currentTimeMillis();
+        boolean shouldCloseTrace = false;
+        
+        // Create trace if not provided
+        if (trace == null) {
+            trace = traceManager.createTrace(
+                "artifact-extraction",
+                campaign.getUuid(),
+                note.getId(),
+                null,
+                note.toString()
+            );
+            shouldCloseTrace = true;
+        }
+        
+        try {
+            trace.addEvent("artifact_extraction_started");
+            
+            // Get categories for this campaign
+            Map<String, String> categories = categoryService.getCategoriesForCampaign(campaign.getUuid());
+            if (categories.isEmpty()) {
+                categoryService.assignDefaultCategoriesToCampaign(campaign.getUuid());
+                categories = categoryService.getCategoriesForCampaign(campaign.getUuid());
+            }
+            
+            trace.setAttribute("workflow.type", "ai-powered-extraction");
+            trace.setAttribute("categories.count", categories.size());
+            
+            // Check timeout
+            if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
+                trace.setStatus(false, "Workflow timeout before artifact extraction");
+                return new ArtifactProcessingResult("Workflow timeout before artifact extraction", 
+                                                   note.getId(), campaign.getUuid());
+            }
+            
+            // Step 1: Extract artifacts using o3-mini
+            List<Artifact> artifacts = extractArtifacts(note.getFullTextForEmbedding(), categories, 
+                                                       note, campaign, trace);
+            
+            // Check timeout
+            if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
+                trace.setStatus(false, "Workflow timeout after artifact extraction");
+                return new ArtifactProcessingResult("Workflow timeout after artifact extraction", 
+                                                   note.getId(), campaign.getUuid());
+            }
+            
+            // Step 2: Extract relationships using o3-mini (only if we have artifacts)
+            List<Relationship> relationships = new ArrayList<>();
+            if (!artifacts.isEmpty()) {
+                relationships = extractRelationships(note.getFullTextForEmbedding(), artifacts, 
+                                                    note, campaign, trace);
+            }
+            
+            // Check timeout
+            if (System.currentTimeMillis() - startTime > WORKFLOW_TIMEOUT_MS) {
+                trace.setStatus(false, "Workflow timeout after relationship extraction");
+                return new ArtifactProcessingResult("Workflow timeout after relationship extraction", 
+                                                   note.getId(), campaign.getUuid());
+            }
+            
+            long totalDuration = System.currentTimeMillis() - startTime;
+            
+            // Add metadata to trace
+            trace.setAttribute("artifacts.count", artifacts.size());
+            trace.setAttribute("relationships.count", relationships.size());
+            trace.setAttribute("extraction.duration_ms", totalDuration);
+            trace.setStatus(true, "Artifact extraction completed successfully");
+            
+            // Calculate total tokens (rough estimation)
+            int totalTokens = artifacts.size() * 100 + relationships.size() * 150;
+            
+            ArtifactProcessingResult result = new ArtifactProcessingResult(artifacts, relationships, totalTokens, 
+                                               totalDuration, note.getId(), campaign.getUuid());
+            
+            if (shouldCloseTrace) {
+                trace.close(gson.toJson(artifacts) + "\n" + gson.toJson(relationships));
+            }
+            
+            return result;
+            
+        } catch (Exception e) {
+            String errorMessage = "Error extracting artifacts: " + e.getMessage();
+            System.err.println(errorMessage);
+            e.printStackTrace();
+            
+            if (shouldCloseTrace && trace != null) {
+                trace.recordException(e);
+                trace.setStatus(false, errorMessage);
+                trace.close();
+            }
             
             return new ArtifactProcessingResult(errorMessage, note.getId(), campaign.getUuid());
         }
@@ -347,13 +459,14 @@ public class ArtifactGraphService {
     
     /**
      * Saves artifacts and relationships to Neo4j database.
+     * This method is public to allow saving after deduplication workflow.
      * 
      * @param artifacts list of artifacts to save
      * @param relationships list of relationships to save
      * @param campaign the campaign these belong to
      * @return true if saved successfully, false otherwise
      */
-    private boolean saveToNeo4j(List<Artifact> artifacts, List<Relationship> relationships, Campain campaign) {
+    public boolean saveToNeo4j(List<Artifact> artifacts, List<Relationship> relationships, Campain campaign) {
         try {
             var driver = dbConnectionManager.getNeo4jRepository().getDriver();
             if (driver == null) {

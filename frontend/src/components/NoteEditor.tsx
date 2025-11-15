@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createNote } from '../api';
-import { NoteCreateRequest } from '../types';
+import { NoteCreateRequest, NoteCreateResponse } from '../types';
 import { useCampaignStore } from '../stores';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -10,6 +10,7 @@ import { Textarea } from './ui/textarea';
 import { Card } from './ui/card';
 import toast from 'react-hot-toast';
 import NoteCreateConfirmDialog from './NoteCreateConfirmDialog';
+import DeduplicationModal from './DeduplicationModal';
 
 /**
  * Note editor component for creating new notes.
@@ -17,7 +18,8 @@ import NoteCreateConfirmDialog from './NoteCreateConfirmDialog';
 const NoteEditor: React.FC = () => {
   const { selectedCampaign } = useCampaignStore();
   const queryClient = useQueryClient();
-  const [confirmDialogData, setConfirmDialogData] = useState<any>(null);
+  const [confirmDialogData, setConfirmDialogData] = useState<NoteCreateResponse | null>(null);
+  const [deduplicationModalData, setDeduplicationModalData] = useState<NoteCreateResponse | null>(null);
 
   const {
     register,
@@ -38,8 +40,15 @@ const NoteEditor: React.FC = () => {
       return createNote(selectedCampaign.uuid, data);
     },
     onSuccess: (data) => {
-      toast.success('Note created successfully!');
-      setConfirmDialogData(data);
+      // Check if deduplication requires user confirmation
+      if (data.requiresUserConfirmation || (data.artifactMergeProposals && data.artifactMergeProposals.length > 0)) {
+        // Show DeduplicationModal instead of ConfirmDialog
+        setDeduplicationModalData(data);
+      } else {
+        // No deduplication needed or all auto-merged - show ConfirmDialog
+        toast.success('Note created successfully!');
+        setConfirmDialogData(data);
+      }
       queryClient.invalidateQueries({ queryKey: ['graph', selectedCampaign?.uuid] });
       reset();
     },
@@ -49,6 +58,19 @@ const NoteEditor: React.FC = () => {
       console.error(error);
     },
   });
+
+  // Handle deduplication confirmation
+  const handleDeduplicationConfirmed = (finalData: NoteCreateResponse) => {
+    setDeduplicationModalData(null);
+    setConfirmDialogData(finalData);
+    queryClient.invalidateQueries({ queryKey: ['graph', selectedCampaign?.uuid] });
+  };
+
+  // Handle deduplication cancellation
+  const handleDeduplicationCancel = () => {
+    setDeduplicationModalData(null);
+    toast.error('Deduplication cancelled. Note was not saved.');
+  };
 
   const onSubmit = (data: NoteCreateRequest) => {
     if (!selectedCampaign) {
@@ -126,6 +148,14 @@ const NoteEditor: React.FC = () => {
           </Button>
         </form>
       </Card>
+
+      {deduplicationModalData && (
+        <DeduplicationModal
+          data={deduplicationModalData}
+          onConfirmed={handleDeduplicationConfirmed}
+          onCancel={handleDeduplicationCancel}
+        />
+      )}
 
       {confirmDialogData && (
         <NoteCreateConfirmDialog

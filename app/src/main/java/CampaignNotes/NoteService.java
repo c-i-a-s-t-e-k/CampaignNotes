@@ -6,8 +6,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.deduplication.DeduplicationCoordinator;
 import CampaignNotes.dto.NoteCreateResponse;
+import CampaignNotes.dto.deduplication.MergeProposal;
 import CampaignNotes.llm.OpenAIEmbeddingService;
 import CampaignNotes.tracking.otel.OTelEmbeddingObservation;
 import CampaignNotes.tracking.otel.OTelTraceManager;
@@ -15,10 +18,14 @@ import CampaignNotes.tracking.otel.OTelTraceManager.OTelTrace;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.grpc.Points.PointId;
 import io.qdrant.client.grpc.Points.RetrievedPoint;
+import model.Artifact;
 import model.ArtifactProcessingResult;
 import model.Campain;
+import model.DeduplicationDecision;
+import model.DeduplicationResult;
 import model.EmbeddingResult;
 import model.Note;
+import model.Relationship;
 
 /**
  * Service for managing campaign notes.
@@ -31,6 +38,10 @@ public class NoteService {
     private final OTelTraceManager traceManager;
     private final ArtifactGraphService artifactService;
     private final DatabaseConnectionManager dbConnectionManager;
+    private final DeduplicationCoordinator deduplicationCoordinator;
+    private final DeduplicationSessionManager sessionManager;
+    private final ArtifactMergeService mergeService;
+    private final DeduplicationConfig deduplicationConfig;
     
     /**
      * Constructor initializes all required services with OpenTelemetry tracking.
@@ -44,6 +55,14 @@ public class NoteService {
         this.embeddingService = new OpenAIEmbeddingService();
         this.traceManager = OTelTraceManager.getInstance();
         this.artifactService = new ArtifactGraphService();
+        this.sessionManager = DeduplicationSessionManager.getInstance();
+        this.mergeService = new ArtifactMergeService(dbConnectionManager, 
+            new GraphEmbeddingService(embeddingService, dbConnectionManager));
+        // Note: deduplicationCoordinator will be null in deprecated constructor
+        // This is intentional - old code path doesn't use deduplication
+        this.deduplicationCoordinator = null;
+        io.github.cdimascio.dotenv.Dotenv dotenv = io.github.cdimascio.dotenv.Dotenv.configure().ignoreIfMissing().load();
+        this.deduplicationConfig = new DeduplicationConfig(dotenv);
     }
     
     /**
@@ -53,16 +72,28 @@ public class NoteService {
      * @param embeddingService the embedding service to use
      * @param artifactService the artifact graph service to use
      * @param dbConnectionManager the database connection manager to use
+     * @param deduplicationCoordinator the deduplication coordinator to use
+     * @param sessionManager the session manager for deduplication
+     * @param mergeService the merge service for artifacts/relationships
+     * @param deduplicationConfig the deduplication configuration
      */
     public NoteService(CampaignManager campaignManager,
                       OpenAIEmbeddingService embeddingService,
                       ArtifactGraphService artifactService,
-                      DatabaseConnectionManager dbConnectionManager) {
+                      DatabaseConnectionManager dbConnectionManager,
+                      DeduplicationCoordinator deduplicationCoordinator,
+                      DeduplicationSessionManager sessionManager,
+                      ArtifactMergeService mergeService,
+                      DeduplicationConfig deduplicationConfig) {
         this.campaignManager = campaignManager;
         this.embeddingService = embeddingService;
         this.traceManager = OTelTraceManager.getInstance();
         this.artifactService = artifactService;
         this.dbConnectionManager = dbConnectionManager;
+        this.deduplicationCoordinator = deduplicationCoordinator;
+        this.sessionManager = sessionManager;
+        this.mergeService = mergeService;
+        this.deduplicationConfig = deduplicationConfig;
     }
     
     /**
@@ -173,15 +204,163 @@ public class NoteService {
                 
                 // Process artifacts after successful storage
                 try {
-                    artifactResult = artifactService.processNoteArtifacts(note, campaign);
+                    // Step 1: Extract artifacts and relationships (without saving)
+                    artifactResult = artifactService.extractArtifactsAndRelationships(note, campaign, trace);
+                    
+                    if (!artifactResult.isSuccessful()) {
+                        System.err.println("Artifact extraction failed: " + artifactResult.getErrorMessage());
+                        trace.addEvent("artifact_extraction_failed");
+                        // Note: We don't return error here because the note was successfully stored
+                    } else if (artifactResult.getArtifacts().isEmpty() && artifactResult.getRelationships().isEmpty()) {
+                        // No artifacts or relationships found - nothing to deduplicate
+                        trace.addEvent("no_artifacts_extracted");
+                    } else if (deduplicationCoordinator != null) {
+                        // Step 2: Perform deduplication
+                        trace.addEvent("deduplication_started");
+                        
+                        DeduplicationResult artifactDedup = deduplicationCoordinator.processArtifacts(
+                            artifactResult.getArtifacts(), note, campaign, 
+                            campaign.getQuadrantCollectionName(), trace);
+                        
+                        DeduplicationResult relationshipDedup = deduplicationCoordinator.processRelationships(
+                            artifactResult.getRelationships(), note, campaign, 
+                            campaign.getQuadrantCollectionName(), trace);
+                        
+                        // Store deduplication results in artifact result
+                        artifactResult.setDeduplicationResult(artifactDedup);
+                        
+                        // Step 3: Analyze decisions and create merge proposals
+                        List<MergeProposal> proposals = new ArrayList<>();
+                        boolean requiresUserConfirmation = false;
+                        int autoMergedArtifacts = 0;
+                        int autoMergedRelationships = 0;
+                        int confidenceThreshold = deduplicationConfig.getLLMConfidenceThreshold();
+                        
+                        // Process artifact decisions
+                        for (Map.Entry<String, List<DeduplicationDecision>> entry : 
+                             artifactDedup.getArtifactDecisions().entrySet()) {
+                            List<DeduplicationDecision> decisions = entry.getValue();
+                            
+                            // Process each decision for this artifact
+                            for (DeduplicationDecision decision : decisions) {
+                                if (decision.isSame()) {
+                                    // Find the artifact
+                                    Artifact newArtifact = findArtifactById(artifactResult.getArtifacts(), entry.getKey());
+                                    if (newArtifact != null) {
+                                        MergeProposal proposal = new MergeProposal(
+                                            newArtifact.getId(),
+                                            newArtifact.getName(),
+                                            decision.getCandidateId(),
+                                            decision.getCandidateName(),
+                                            "artifact",
+                                            decision.getConfidence(),
+                                            decision.getReasoning(),
+                                            decision.shouldAutoMerge(confidenceThreshold)
+                                        );
+                                        proposals.add(proposal);
+                                        
+                                        if (decision.shouldAutoMerge(confidenceThreshold)) {
+                                            // Auto-merge high confidence duplicates
+                                            boolean merged = mergeService.mergeArtifacts(
+                                                decision.getCandidateName(), newArtifact, campaign.getNeo4jLabel());
+                                            if (merged) {
+                                                autoMergedArtifacts++;
+                                                proposal.setApproved(true);
+                                            }
+                                        } else {
+                                            requiresUserConfirmation = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Process relationship decisions
+                        for (Map.Entry<String, List<DeduplicationDecision>> entry : 
+                             relationshipDedup.getRelationshipDecisions().entrySet()) {
+                            List<DeduplicationDecision> decisions = entry.getValue();
+                            
+                            // Process each decision for this relationship
+                            for (DeduplicationDecision decision : decisions) {
+                                if (decision.isSame()) {
+                                    // Find the relationship
+                                    Relationship newRel = findRelationshipById(
+                                        artifactResult.getRelationships(), entry.getKey());
+                                    if (newRel != null) {
+                                        MergeProposal proposal = new MergeProposal(
+                                            newRel.getId(),
+                                            newRel.getLabel(),
+                                            decision.getCandidateId(),
+                                            decision.getCandidateName(),
+                                            "relationship",
+                                            decision.getConfidence(),
+                                            decision.getReasoning(),
+                                            decision.shouldAutoMerge(confidenceThreshold)
+                                        );
+                                        proposals.add(proposal);
+                                        
+                                        if (decision.shouldAutoMerge(confidenceThreshold)) {
+                                            // Auto-merge high confidence duplicates
+                                            // Note: For relationships, we need source/target names from candidate
+                                            // For now, skip auto-merge for relationships - they're more complex
+                                            requiresUserConfirmation = true;
+                                        } else {
+                                            requiresUserConfirmation = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        artifactResult.setMergeProposals(proposals);
+                        
+                        // Step 4: Decide on next action
+                        if (requiresUserConfirmation) {
+                            // Store session and return response with proposals
+                            sessionManager.createSession(
+                                note.getId(), 
+                                campaign.getUuid(),
+                                artifactResult.getArtifacts(),
+                                artifactResult.getRelationships()
+                            );
+                            
+                            trace.addEvent("deduplication_requires_confirmation");
+                            trace.setAttribute("merge_proposals.count", proposals.size());
+                            trace.setAttribute("auto_merged.artifacts", autoMergedArtifacts);
+                            
+                        } else {
+                            // All decisions are auto-merge or no duplicates found
+                            // Save new artifacts/relationships to Neo4j
+                            List<Artifact> newArtifacts = artifactDedup.getNewArtifacts();
+                            List<Relationship> newRelationships = relationshipDedup.getNewRelationships();
+                            
+                            boolean saved = artifactService.saveToNeo4j(newArtifacts, newRelationships, campaign);
+                            
+                            if (saved) {
+                                trace.addEvent("artifacts_saved_after_deduplication");
+                                trace.setAttribute("saved.artifacts", newArtifacts.size());
+                                trace.setAttribute("saved.relationships", newRelationships.size());
+                                trace.setAttribute("auto_merged.artifacts", autoMergedArtifacts);
+                                trace.setAttribute("auto_merged.relationships", autoMergedRelationships);
+                            } else {
+                                System.err.println("Failed to save artifacts to Neo4j after deduplication");
+                                trace.addEvent("save_failed_after_deduplication");
+                            }
+                        }
+                        
+                        trace.addEvent("deduplication_completed");
+                    } else {
+                        // No deduplication coordinator - use old workflow (backward compatibility)
+                        artifactService.saveToNeo4j(
+                            artifactResult.getArtifacts(), 
+                            artifactResult.getRelationships(), 
+                            campaign);
+                        trace.addEvent("artifacts_saved_without_deduplication");
+                    }
                     
                     if (artifactResult.isSuccessful()) {
-                        trace.setAttribute("artifacts.count", artifactResult.getArtifacts().size());
-                        trace.setAttribute("relationships.count", artifactResult.getRelationships().size());
-                    } else {
-                        System.err.println("Artifact processing failed: " + artifactResult.getErrorMessage());
-                        trace.addEvent("artifact_processing_failed");
-                        // Note: We don't return error here because the note was successfully stored
+                        trace.setAttribute("artifacts.extracted", artifactResult.getArtifacts().size());
+                        trace.setAttribute("relationships.extracted", artifactResult.getRelationships().size());
                     }
                 } catch (Exception e) {
                     System.err.println("Error during artifact processing: " + e.getMessage());
@@ -234,6 +413,32 @@ public class NoteService {
         if (artifactResult != null && artifactResult.isSuccessful()) {
             response.setArtifactCount(artifactResult.getArtifacts().size());
             response.setRelationshipCount(artifactResult.getRelationships().size());
+            
+            // Add deduplication information
+            if (artifactResult.getDeduplicationResult() != null) {
+                response.setDeduplicationResult(artifactResult.getDeduplicationResult());
+            }
+            
+            if (!artifactResult.getMergeProposals().isEmpty()) {
+                response.setArtifactMergeProposals(artifactResult.getMergeProposals());
+                
+                // Check if any proposals require user confirmation
+                boolean requiresConfirmation = artifactResult.getMergeProposals().stream()
+                    .anyMatch(p -> !p.isAutoMerge());
+                response.setRequiresUserConfirmation(requiresConfirmation);
+                
+                // Count auto-merged items
+                int autoMergedArtifacts = (int) artifactResult.getMergeProposals().stream()
+                    .filter(p -> "artifact".equals(p.getItemType()) && p.isAutoMerge() && p.isApproved())
+                    .count();
+                    
+                int autoMergedRelationships = (int) artifactResult.getMergeProposals().stream()
+                    .filter(p -> "relationship".equals(p.getItemType()) && p.isAutoMerge() && p.isApproved())
+                    .count();
+                
+                response.setMergedArtifactCount(autoMergedArtifacts);
+                response.setMergedRelationshipCount(autoMergedRelationships);
+            }
         } else {
             // Note was stored successfully but artifact processing failed or wasn't performed
             response.setArtifactCount(0);
@@ -245,6 +450,26 @@ public class NoteService {
         }
         
         return response;
+    }
+    
+    /**
+     * Helper method to find artifact by ID in a list.
+     */
+    private Artifact findArtifactById(List<Artifact> artifacts, String id) {
+        return artifacts.stream()
+            .filter(a -> a.getId().equals(id))
+            .findFirst()
+            .orElse(null);
+    }
+    
+    /**
+     * Helper method to find relationship by ID in a list.
+     */
+    private Relationship findRelationshipById(List<Relationship> relationships, String id) {
+        return relationships.stream()
+            .filter(r -> r.getId().equals(id))
+            .findFirst()
+            .orElse(null);
     }
     
     /**

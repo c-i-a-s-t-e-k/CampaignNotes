@@ -3,9 +3,11 @@ package CampaignNotes;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Lazy;
 
 import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.deduplication.DeduplicationCoordinator;
 import CampaignNotes.llm.OpenAIEmbeddingService;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.otel.OpenTelemetryConfig;
@@ -97,14 +99,79 @@ public class Application {
     }
     
     /**
+     * Bean for DeduplicationSessionManager.
+     */
+    @Bean
+    public DeduplicationSessionManager deduplicationSessionManager() {
+        return DeduplicationSessionManager.getInstance();
+    }
+    
+    /**
+     * Bean for ArtifactMergeService.
+     */
+    @Bean
+    public ArtifactMergeService artifactMergeService(DatabaseConnectionManager dbConnectionManager,
+                                                     GraphEmbeddingService graphEmbeddingService) {
+        return new ArtifactMergeService(dbConnectionManager, graphEmbeddingService);
+    }
+    
+    /**
+     * Bean for DeduplicationCoordinator.
+     * Note: Uses @Lazy for NoteService to break circular dependency.
+     */
+    @Bean
+    public CampaignNotes.deduplication.DeduplicationCoordinator deduplicationCoordinator(
+            CampaignNotes.deduplication.CandidateFinder candidateFinder,
+            CampaignNotes.deduplication.DeduplicationLLMService dedupLLMService,
+            GraphEmbeddingService graphEmbeddingService,
+            DeduplicationConfig config,
+            @Lazy NoteService noteService) {
+        return new CampaignNotes.deduplication.DeduplicationCoordinator(
+            candidateFinder, dedupLLMService, graphEmbeddingService, config, noteService);
+    }
+    
+    /**
+     * Bean for CandidateFinder.
+     */
+    @Bean
+    public CampaignNotes.deduplication.CandidateFinder candidateFinder(
+            DatabaseConnectionManager dbConnectionManager,
+            DeduplicationConfig config) {
+        return new CampaignNotes.deduplication.CandidateFinder(dbConnectionManager, config);
+    }
+    
+    /**
+     * Bean for DeduplicationLLMService.
+     */
+    @Bean
+    public CampaignNotes.deduplication.DeduplicationLLMService deduplicationLLMService(
+            OpenAILLMService llmService,
+            CampaignNotes.tracking.LangfuseClient langfuseClient) {
+        return new CampaignNotes.deduplication.DeduplicationLLMService(llmService, langfuseClient);
+    }
+    
+    /**
+     * Bean for LangfuseClient.
+     */
+    @Bean
+    public CampaignNotes.tracking.LangfuseClient langfuseClient() {
+        return CampaignNotes.tracking.LangfuseClient.getInstance();
+    }
+    
+    /**
      * Bean for NoteService.
      */
     @Bean
     public NoteService noteService(CampaignManager campaignManager,
                                    OpenAIEmbeddingService embeddingService,
                                    ArtifactGraphService artifactService,
-                                   DatabaseConnectionManager dbConnectionManager) {
-        return new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager);
+                                   DatabaseConnectionManager dbConnectionManager,
+                                   DeduplicationCoordinator deduplicationCoordinator,
+                                   DeduplicationSessionManager sessionManager,
+                                   ArtifactMergeService mergeService,
+                                   DeduplicationConfig deduplicationConfig) {
+        return new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager,
+                             deduplicationCoordinator, sessionManager, mergeService, deduplicationConfig);
     }
     
     /**

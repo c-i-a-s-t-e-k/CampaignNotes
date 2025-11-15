@@ -48,7 +48,8 @@ public class TerminalInterface {
         ArtifactGraphService artifactService = new ArtifactGraphService(llmService, categoryService, 
                                                                        dbConnectionManager, graphEmbeddingService, 
                                                                        deduplicationConfig);
-        this.noteService = new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager);
+        // Use deprecated constructor for terminal interface (not production code)
+        this.noteService = new NoteService();
         this.searchService = new SemantickSearchService(dbConnectionManager, embeddingService);
         
         this.running = false;
