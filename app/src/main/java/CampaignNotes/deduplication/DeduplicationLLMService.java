@@ -1,7 +1,10 @@
 package CampaignNotes.deduplication;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -29,7 +32,7 @@ public class DeduplicationLLMService {
     private final OpenAILLMService llmService;
     private final LangfuseClient langfuseClient;
     
-    private static final String DEDUP_MODEL = "gpt-4o";
+    private static final String DEDUP_MODEL = "gpt-3.5-turbo";
     private static final String ARTIFACT_DEDUP_PROMPT_NAME = "ArtifactDeduplicationReasoning";
     private static final String RELATIONSHIP_DEDUP_PROMPT_NAME = "RelationshipDeduplicationReasoning";
     
@@ -51,12 +54,14 @@ public class DeduplicationLLMService {
      * @param newArtifact the newly extracted artifact
      * @param candidate the candidate artifact from Phase 1
      * @param sourceNote the note from which the new artifact was extracted
+     * @param candidateNotes the notes associated with the candidate artifact
      * @param campaign the campaign context
      * @param trace OpenTelemetry trace for tracking
      * @return DeduplicationDecision with verdict and confidence
      */
     public DeduplicationDecision analyzeArtifactSimilarity(Artifact newArtifact, ArtifactCandidate candidate,
-                                                          Note sourceNote, Campain campaign, OTelTrace trace) {
+                                                          Note sourceNote, List<Note> candidateNotes,
+                                                          Campain campaign, OTelTrace trace) {
         try (OTelGenerationObservation observation = 
             new OTelGenerationObservation("artifact-dedup-reasoning", trace.getContext())) {
             
@@ -67,8 +72,8 @@ public class DeduplicationLLMService {
             Map<String, Object> promptVariables = new HashMap<>();
             promptVariables.put("NEW_ARTIFACT", formatArtifactForPrompt(newArtifact));
             promptVariables.put("CANDIDATE_ARTIFACT", formatArtifactForPrompt(candidate));
-            promptVariables.put("NOTE_CONTEXT", sourceNote.getContent());
-            promptVariables.put("GRAPH_CONTEXT", "");  // Can be extended with neighbor information
+            promptVariables.put("NEW_ARTIFACT_NOTE_CONTEXT", sourceNote.getContent());
+            promptVariables.put("CANDIDATE_ARTIFACT_NOTES_CONTEXT", formatNotesContext(candidateNotes));
             
             // Get prompt from Langfuse
             PromptContent promptContent = langfuseClient.getPromptContentWithVariables(
@@ -127,12 +132,14 @@ public class DeduplicationLLMService {
      * @param newRelationship the newly extracted relationship
      * @param candidate the candidate relationship from Phase 1
      * @param sourceNote the note from which the new relationship was extracted
+     * @param candidateNotes the notes associated with the candidate relationship
      * @param campaign the campaign context
      * @param trace OpenTelemetry trace for tracking
      * @return DeduplicationDecision with verdict and confidence
      */
     public DeduplicationDecision analyzeRelationshipSimilarity(Relationship newRelationship, RelationshipCandidate candidate,
-                                                              Note sourceNote, Campain campaign, OTelTrace trace) {
+                                                              Note sourceNote, List<Note> candidateNotes,
+                                                              Campain campaign, OTelTrace trace) {
         try (OTelGenerationObservation observation = 
             new OTelGenerationObservation("relationship-dedup-reasoning", trace.getContext())) {
             
@@ -143,8 +150,8 @@ public class DeduplicationLLMService {
             Map<String, Object> promptVariables = new HashMap<>();
             promptVariables.put("NEW_RELATIONSHIP", formatRelationshipForPrompt(newRelationship));
             promptVariables.put("CANDIDATE_RELATIONSHIP", formatRelationshipForPrompt(candidate));
-            promptVariables.put("NOTE_CONTEXT", sourceNote.getContent());
-            promptVariables.put("GRAPH_CONTEXT", "");
+            promptVariables.put("NEW_RELATIONSHIP_NOTE_CONTEXT", sourceNote.getContent());
+            promptVariables.put("CANDIDATE_RELATIONSHIP_NOTES_CONTEXT", formatNotesContext(candidateNotes));
             
             // Get prompt from Langfuse
             PromptContent promptContent = langfuseClient.getPromptContentWithVariables(
@@ -249,12 +256,51 @@ public class DeduplicationLLMService {
     }
     
     /**
+     * Formats notes context for inclusion in the prompt.
+     * Takes the 3 most recent notes (sorted by createdAt in descending order).
+     * If no notes are provided, returns a message indicating no historical notes are available.
+     * 
+     * @param candidateNotes the notes to format
+     * @return formatted notes context as a string
+     */
+    private String formatNotesContext(List<Note> candidateNotes) {
+        if (candidateNotes == null || candidateNotes.isEmpty()) {
+            return "No historical notes available";
+        }
+        
+        // Sort notes by createdAt in descending order (newest first)
+        List<Note> sortedNotes = candidateNotes.stream()
+            .sorted((n1, n2) -> {
+                LocalDateTime date1 = n1.getCreatedAt() != null ? n1.getCreatedAt() : LocalDateTime.MIN;
+                LocalDateTime date2 = n2.getCreatedAt() != null ? n2.getCreatedAt() : LocalDateTime.MIN;
+                return date2.compareTo(date1);
+            })
+            .limit(3)
+            .collect(Collectors.toList());
+        
+        // Format notes
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < sortedNotes.size(); i++) {
+            Note note = sortedNotes.get(i);
+            if (i > 0) {
+                sb.append("\n\n");
+            }
+            sb.append(String.format("Note %d (created: %s):\n%s", 
+                i + 1, 
+                note.getCreatedAt() != null ? note.getCreatedAt().toString() : "Unknown",
+                note.getContent() != null ? note.getContent() : ""));
+        }
+        
+        return sb.toString();
+    }
+    
+    /**
      * Creates a fallback prompt for artifact deduplication if Langfuse prompt is not available.
      */
     private String createFallbackArtifactDedupPrompt() {
         return "You are an expert at identifying whether two descriptions refer to the same entity in a narrative context. " +
                "Analyze if the new artifact and candidate artifact represent the same being/object. " +
-               "Consider variations in naming, descriptions, and narrative context. " +
+               "Consider variations in naming, descriptions, narrative context, and historical notes about the candidate artifact. " +
                "Respond in JSON format: {\"is_same\": boolean, \"confidence\": 0-100, \"reasoning\": \"explanation\"}";
     }
     
@@ -264,7 +310,7 @@ public class DeduplicationLLMService {
     private String createFallbackRelationshipDedupPrompt() {
         return "You are an expert at identifying whether two relationship descriptions refer to the same connection in a narrative context. " +
                "Analyze if the new relationship and candidate relationship represent the same connection between entities. " +
-               "Consider variations in description and narrative context. " +
+               "Consider variations in description, narrative context, and historical notes about the candidate relationship. " +
                "Respond in JSON format: {\"is_same\": boolean, \"confidence\": 0-100, \"reasoning\": \"explanation\"}";
     }
     

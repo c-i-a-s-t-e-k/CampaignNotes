@@ -28,21 +28,7 @@ public class DeduplicationConfig {
     private int candidateLimit;
     private double similarityThreshold;
     private int llmConfidenceThreshold;
-    private Dotenv dotenv;
-    
-    /**
-     * Constructor that loads configuration from environment variables.
-     * Falls back to default values if environment variables are not set.
-     */
-    public DeduplicationConfig() {
-        try {
-            this.dotenv = Dotenv.configure().ignoreIfMissing().load();
-        } catch (Exception e) {
-            System.err.println("Failed to load .env file: " + e.getMessage());
-            new Dotenv();
-        }
-        loadConfig();
-    }
+    private Dotenv dotenv = null;
     
     /**
      * Constructor with explicit Dotenv instance (useful for testing).

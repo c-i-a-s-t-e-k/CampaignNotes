@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import CampaignNotes.GraphEmbeddingService;
+import CampaignNotes.NoteService;
 import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.dto.deduplication.ArtifactCandidate;
 import CampaignNotes.dto.deduplication.RelationshipCandidate;
@@ -35,6 +36,7 @@ public class DeduplicationCoordinator {
     private final GraphEmbeddingService graphEmbeddingService;
     private final DeduplicationConfig config;
     private final OTelTraceManager traceManager;
+    private final NoteService noteService;
     
     /**
      * Constructor with dependency injection.
@@ -43,15 +45,18 @@ public class DeduplicationCoordinator {
      * @param dedupLLMService service for Phase 2 (LLM reasoning)
      * @param graphEmbeddingService service for embedding generation
      * @param config deduplication configuration
+     * @param noteService service for retrieving note details
      */
     public DeduplicationCoordinator(CandidateFinder candidateFinder,
                                    DeduplicationLLMService dedupLLMService,
                                    GraphEmbeddingService graphEmbeddingService,
-                                   DeduplicationConfig config) {
+                                   DeduplicationConfig config,
+                                   NoteService noteService) {
         this.candidateFinder = candidateFinder;
         this.dedupLLMService = dedupLLMService;
         this.graphEmbeddingService = graphEmbeddingService;
         this.config = config;
+        this.noteService = noteService;
         this.traceManager = OTelTraceManager.getInstance();
     }
     
@@ -127,8 +132,12 @@ public class DeduplicationCoordinator {
             boolean hasMerge = false;
             
             for (ArtifactCandidate candidate : candidates) {
+                // Retrieve the candidate's notes
+                List<Note> candidateNotes = noteService.getNotesByIds(
+                    candidate.getSourceNoteIds(), campaignCollectionName);
+                
                 DeduplicationDecision decision = dedupLLMService.analyzeArtifactSimilarity(
-                    artifact, candidate, sourceNote, campaign, trace);
+                    artifact, candidate, sourceNote, candidateNotes, campaign, trace);
                 
                 if (decision.isSame()) {
                     hasMerge = true;
@@ -239,8 +248,12 @@ public class DeduplicationCoordinator {
             boolean hasMerge = false;
             
             for (RelationshipCandidate candidate : candidates) {
+                // Retrieve the candidate's notes
+                List<Note> candidateNotes = noteService.getNotesByIds(
+                    candidate.getSourceNoteIds(), campaignCollectionName);
+                
                 DeduplicationDecision decision = dedupLLMService.analyzeRelationshipSimilarity(
-                    relationship, candidate, sourceNote, campaign, trace);
+                    relationship, candidate, sourceNote, candidateNotes, campaign, trace);
                 
                 if (decision.isSame()) {
                     hasMerge = true;
