@@ -15,7 +15,12 @@ import model.Relationship;
  * Service for merging artifacts and relationships in Neo4j during deduplication.
  * Handles the consolidation of duplicate nodes while preserving relationships
  * and note source tracking.
+ * 
+ * @deprecated This service has been superseded by merge methods in ArtifactGraphService
+ *             which also handle embedding updates in Qdrant. Use ArtifactGraphService
+ *             methods instead: mergeArtifacts() and mergeRelationships().
  */
+@Deprecated
 public class ArtifactMergeService {
     
     private final DatabaseConnectionManager dbConnectionManager;
@@ -41,7 +46,9 @@ public class ArtifactMergeService {
      * @param newArtifact the new artifact to merge
      * @param campaign the campaign context
      * @return true if merge was successful, false otherwise
+     * @deprecated Use ArtifactGraphService.mergeArtifacts() instead, which also updates embeddings in Qdrant
      */
+    @Deprecated
     public boolean mergeArtifacts(String targetArtifactName, Artifact newArtifact, 
                                  String campaignLabel) {
         try {
@@ -137,7 +144,9 @@ public class ArtifactMergeService {
      * @param newRelationship the new relationship to merge
      * @param campaignLabel the campaign label
      * @return true if merge was successful, false otherwise
+     * @deprecated Use ArtifactGraphService.mergeRelationships() instead, which also updates embeddings in Qdrant
      */
+    @Deprecated
     public boolean mergeRelationships(String sourceArtifactName, String targetArtifactName,
                                      String relationshipLabel, Relationship newRelationship,
                                      String campaignLabel) {

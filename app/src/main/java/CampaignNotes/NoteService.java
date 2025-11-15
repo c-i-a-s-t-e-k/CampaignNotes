@@ -40,7 +40,6 @@ public class NoteService {
     private final DatabaseConnectionManager dbConnectionManager;
     private final DeduplicationCoordinator deduplicationCoordinator;
     private final DeduplicationSessionManager sessionManager;
-    private final ArtifactMergeService mergeService;
     private final DeduplicationConfig deduplicationConfig;
     
     /**
@@ -56,8 +55,6 @@ public class NoteService {
         this.traceManager = OTelTraceManager.getInstance();
         this.artifactService = new ArtifactGraphService();
         this.sessionManager = DeduplicationSessionManager.getInstance();
-        this.mergeService = new ArtifactMergeService(dbConnectionManager, 
-            new GraphEmbeddingService(embeddingService, dbConnectionManager));
         // Note: deduplicationCoordinator will be null in deprecated constructor
         // This is intentional - old code path doesn't use deduplication
         this.deduplicationCoordinator = null;
@@ -74,7 +71,6 @@ public class NoteService {
      * @param dbConnectionManager the database connection manager to use
      * @param deduplicationCoordinator the deduplication coordinator to use
      * @param sessionManager the session manager for deduplication
-     * @param mergeService the merge service for artifacts/relationships
      * @param deduplicationConfig the deduplication configuration
      */
     public NoteService(CampaignManager campaignManager,
@@ -83,7 +79,6 @@ public class NoteService {
                       DatabaseConnectionManager dbConnectionManager,
                       DeduplicationCoordinator deduplicationCoordinator,
                       DeduplicationSessionManager sessionManager,
-                      ArtifactMergeService mergeService,
                       DeduplicationConfig deduplicationConfig) {
         this.campaignManager = campaignManager;
         this.embeddingService = embeddingService;
@@ -92,7 +87,6 @@ public class NoteService {
         this.dbConnectionManager = dbConnectionManager;
         this.deduplicationCoordinator = deduplicationCoordinator;
         this.sessionManager = sessionManager;
-        this.mergeService = mergeService;
         this.deduplicationConfig = deduplicationConfig;
     }
     
@@ -261,8 +255,9 @@ public class NoteService {
                                         
                                         if (decision.shouldAutoMerge(confidenceThreshold)) {
                                             // Auto-merge high confidence duplicates
-                                            boolean merged = mergeService.mergeArtifacts(
-                                                decision.getCandidateName(), newArtifact, campaign.getNeo4jLabel());
+                                            boolean merged = artifactService.mergeArtifacts(
+                                                decision.getCandidateName(), newArtifact, campaign.getNeo4jLabel(),
+                                                campaign.getQuadrantCollectionName());
                                             if (merged) {
                                                 autoMergedArtifacts++;
                                                 proposal.setApproved(true);
@@ -300,10 +295,18 @@ public class NoteService {
                                         proposals.add(proposal);
                                         
                                         if (decision.shouldAutoMerge(confidenceThreshold)) {
-                                            // Auto-merge high confidence duplicates
-                                            // Note: For relationships, we need source/target names from candidate
-                                            // For now, skip auto-merge for relationships - they're more complex
-                                            requiresUserConfirmation = true;
+                                            // Auto-merge high confidence duplicates for relationships
+                                            boolean merged = artifactService.mergeRelationships(
+                                                newRel.getSourceArtifactName(),
+                                                newRel.getTargetArtifactName(),
+                                                decision.getCandidateName(), // existing relationship label
+                                                newRel,
+                                                campaign.getNeo4jLabel(),
+                                                campaign.getQuadrantCollectionName());
+                                            if (merged) {
+                                                autoMergedRelationships++;
+                                                proposal.setApproved(true);
+                                            }
                                         } else {
                                             requiresUserConfirmation = true;
                                         }
@@ -330,11 +333,12 @@ public class NoteService {
                             
                         } else {
                             // All decisions are auto-merge or no duplicates found
-                            // Save new artifacts/relationships to Neo4j
+                            // Save new artifacts/relationships to Neo4j with embeddings
                             List<Artifact> newArtifacts = artifactDedup.getNewArtifacts();
                             List<Relationship> newRelationships = relationshipDedup.getNewRelationships();
                             
-                            boolean saved = artifactService.saveToNeo4j(newArtifacts, newRelationships, campaign);
+                            boolean saved = artifactService.saveToNeo4j(newArtifacts, newRelationships, campaign,
+                                                                       campaign.getQuadrantCollectionName());
                             
                             if (saved) {
                                 trace.addEvent("artifacts_saved_after_deduplication");
@@ -351,10 +355,12 @@ public class NoteService {
                         trace.addEvent("deduplication_completed");
                     } else {
                         // No deduplication coordinator - use old workflow (backward compatibility)
+                        // Save with embeddings for consistency
                         artifactService.saveToNeo4j(
                             artifactResult.getArtifacts(), 
                             artifactResult.getRelationships(), 
-                            campaign);
+                            campaign,
+                            campaign.getQuadrantCollectionName());
                         trace.addEvent("artifacts_saved_without_deduplication");
                     }
                     
@@ -409,6 +415,8 @@ public class NoteService {
             true,
             "Note created successfully and artifacts extracted"
         );
+        
+        response.setCampaignUuid(note.getCampaignUuid());
         
         if (artifactResult != null && artifactResult.isSuccessful()) {
             response.setArtifactCount(artifactResult.getArtifacts().size());

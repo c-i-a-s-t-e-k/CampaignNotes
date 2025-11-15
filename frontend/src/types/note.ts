@@ -25,6 +25,7 @@ export interface ArtifactSummary {
 
 export interface NoteCreateResponse {
   noteId: string;
+  campaignUuid: string;
   title: string;
   success: boolean;
   message: string;

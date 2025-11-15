@@ -50,7 +50,7 @@ const DeduplicationModal: React.FC<DeduplicationModalProps> = ({
   // Mutation for confirming deduplication
   const confirmMutation = useMutation({
     mutationFn: (request: NoteConfirmationRequest) => {
-      return confirmDeduplication(data.noteId.split('-')[0], data.noteId, request);
+      return confirmDeduplication(data.campaignUuid, data.noteId, request);
     },
     onSuccess: (finalData) => {
       toast.success('Deduplication completed successfully!');
@@ -114,7 +114,7 @@ const DeduplicationModal: React.FC<DeduplicationModalProps> = ({
     });
 
     const request: NoteConfirmationRequest = {
-      campaignUuid: data.noteId.split('-')[0], // Extract campaign UUID
+      campaignUuid: data.campaignUuid,
       noteId: data.noteId,
       approvedMergeProposals: approved,
     };

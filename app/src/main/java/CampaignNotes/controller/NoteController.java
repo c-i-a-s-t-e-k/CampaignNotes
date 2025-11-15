@@ -16,10 +16,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import CampaignNotes.ArtifactGraphService;
-import CampaignNotes.ArtifactMergeService;
 import CampaignNotes.CampaignManager;
 import CampaignNotes.DeduplicationSessionManager;
-import CampaignNotes.GraphEmbeddingService;
 import CampaignNotes.NoteService;
 import CampaignNotes.dto.NoteConfirmationRequest;
 import CampaignNotes.dto.NoteCreateRequest;
@@ -46,21 +44,15 @@ public class NoteController {
     private final NoteService noteService;
     private final CampaignManager campaignManager;
     private final DeduplicationSessionManager sessionManager;
-    private final ArtifactMergeService mergeService;
     private final ArtifactGraphService artifactService;
-    private final GraphEmbeddingService graphEmbeddingService;
     
     public NoteController(NoteService noteService, CampaignManager campaignManager,
-                         DeduplicationSessionManager sessionManager, 
-                         ArtifactMergeService mergeService,
-                         ArtifactGraphService artifactService,
-                         GraphEmbeddingService graphEmbeddingService) {
+                         DeduplicationSessionManager sessionManager,
+                         ArtifactGraphService artifactService) {
         this.noteService = noteService;
         this.campaignManager = campaignManager;
         this.sessionManager = sessionManager;
-        this.mergeService = mergeService;
         this.artifactService = artifactService;
-        this.graphEmbeddingService = graphEmbeddingService;
     }
     
     /**
@@ -245,10 +237,11 @@ public class NoteController {
                         .orElse(null);
                     
                     if (artifact != null) {
-                        boolean merged = mergeService.mergeArtifacts(
+                        boolean merged = artifactService.mergeArtifacts(
                             proposal.getExistingItemName(), 
                             artifact, 
-                            campaign.getNeo4jLabel()
+                            campaign.getNeo4jLabel(),
+                            campaign.getQuadrantCollectionName()
                         );
                         
                         if (merged) {
@@ -271,12 +264,13 @@ public class NoteController {
                     if (relationship != null) {
                         // For relationships, we need source and target artifact names
                         // The candidate name contains the relationship label
-                        boolean merged = mergeService.mergeRelationships(
+                        boolean merged = artifactService.mergeRelationships(
                             relationship.getSourceArtifactName(),
                             relationship.getTargetArtifactName(),
                             proposal.getExistingItemName(), // existing relationship label
                             relationship,
-                            campaign.getNeo4jLabel()
+                            campaign.getNeo4jLabel(),
+                            campaign.getQuadrantCollectionName()
                         );
                         
                         if (merged) {
@@ -299,7 +293,9 @@ public class NoteController {
                 .filter(r -> !mergedRelationshipIds.contains(r.getId()))
                 .collect(java.util.stream.Collectors.toList());
             
-            boolean saved = artifactService.saveToNeo4j(newArtifacts, newRelationships, campaign);
+            // 5. Save new artifacts/relationships to Neo4j with embeddings
+            boolean saved = artifactService.saveToNeo4j(newArtifacts, newRelationships, campaign,
+                                                       campaign.getQuadrantCollectionName());
             
             if (!saved) {
                 LOGGER.error("Failed to save new artifacts/relationships to Neo4j");
@@ -312,29 +308,10 @@ public class NoteController {
             newArtifactCount = newArtifacts.size();
             newRelationshipCount = newRelationships.size();
             
-            // 6. Store embeddings in Qdrant for new artifacts/relationships
-            try {
-                String collectionName = campaign.getQuadrantCollectionName();
-                
-                for (Artifact artifact : newArtifacts) {
-                    var embeddingResult = graphEmbeddingService.generateArtifactEmbedding(artifact);
-                    graphEmbeddingService.storeArtifactEmbedding(artifact, embeddingResult.getEmbedding(), collectionName);
-                }
-                
-                for (Relationship relationship : newRelationships) {
-                    var embeddingResult = graphEmbeddingService.generateRelationshipEmbedding(relationship);
-                    graphEmbeddingService.storeRelationshipEmbedding(relationship, embeddingResult.getEmbedding(), collectionName);
-                }
-                
-                LOGGER.info("Stored embeddings for {} artifacts and {} relationships", 
-                           newArtifacts.size(), newRelationships.size());
-                
-            } catch (Exception e) {
-                LOGGER.error("Error storing embeddings: {}", e.getMessage(), e);
-                // Don't fail the entire request if embedding storage fails
-            }
+            LOGGER.info("Saved {} artifacts and {} relationships with embeddings", 
+                       newArtifacts.size(), newRelationships.size());
             
-            // 7. Clear session
+            // 6. Clear session
             sessionManager.removeSession(noteId);
             LOGGER.info("Deduplication session cleared for note: {}", noteId);
             

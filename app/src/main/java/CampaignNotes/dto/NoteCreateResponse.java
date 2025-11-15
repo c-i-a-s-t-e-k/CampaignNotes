@@ -2,6 +2,7 @@ package CampaignNotes.dto;
 
 import java.util.ArrayList;
 import java.util.List;
+
 import CampaignNotes.dto.deduplication.MergeProposal;
 import model.DeduplicationResult;
 
@@ -12,6 +13,7 @@ import model.DeduplicationResult;
  */
 public class NoteCreateResponse {
     private String noteId;
+    private String campaignUuid;
     private String title;
     private boolean success;
     private String message;
@@ -47,6 +49,14 @@ public class NoteCreateResponse {
     
     public void setNoteId(String noteId) {
         this.noteId = noteId;
+    }
+    
+    public String getCampaignUuid() {
+        return campaignUuid;
+    }
+    
+    public void setCampaignUuid(String campaignUuid) {
+        this.campaignUuid = campaignUuid;
     }
     
     public String getTitle() {

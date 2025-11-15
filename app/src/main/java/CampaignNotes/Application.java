@@ -108,8 +108,11 @@ public class Application {
     
     /**
      * Bean for ArtifactMergeService.
+     * 
+     * @deprecated ArtifactMergeService is deprecated, use ArtifactGraphService methods instead
      */
     @Bean
+    @Deprecated
     public ArtifactMergeService artifactMergeService(DatabaseConnectionManager dbConnectionManager,
                                                      GraphEmbeddingService graphEmbeddingService) {
         return new ArtifactMergeService(dbConnectionManager, graphEmbeddingService);
@@ -168,10 +171,9 @@ public class Application {
                                    DatabaseConnectionManager dbConnectionManager,
                                    DeduplicationCoordinator deduplicationCoordinator,
                                    DeduplicationSessionManager sessionManager,
-                                   ArtifactMergeService mergeService,
                                    DeduplicationConfig deduplicationConfig) {
         return new NoteService(campaignManager, embeddingService, artifactService, dbConnectionManager,
-                             deduplicationCoordinator, sessionManager, mergeService, deduplicationConfig);
+                             deduplicationCoordinator, sessionManager, deduplicationConfig);
     }
     
     /**
