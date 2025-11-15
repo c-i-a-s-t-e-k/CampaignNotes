@@ -98,7 +98,8 @@ public class DeduplicationCoordinator {
                 
                 // Phase 1: Find candidates
                 List<ArtifactCandidate> candidates = candidateFinder.findSimilarArtifacts(
-                    embeddingResult.getEmbedding(), campaign.getUuid(), campaignCollectionName);
+                    embeddingResult.getEmbedding(), campaign.getUuid(), campaignCollectionName, 
+                    campaign.getNeo4jLabel());
                 
                 if (!candidates.isEmpty()) {
                     allCandidates.put(artifact.getId(), candidates);
@@ -210,7 +211,8 @@ public class DeduplicationCoordinator {
                 
                 // Phase 1: Find candidates
                 List<RelationshipCandidate> candidates = candidateFinder.findSimilarRelationships(
-                    embeddingResult.getEmbedding(), campaign.getUuid(), campaignCollectionName);
+                    embeddingResult.getEmbedding(), campaign.getUuid(), campaignCollectionName,
+                    campaign.getNeo4jLabel());
                 
                 if (!candidates.isEmpty()) {
                     allCandidates.put(relationship.getId(), candidates);
