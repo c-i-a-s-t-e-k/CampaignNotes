@@ -134,6 +134,41 @@ public class CampaignManager {
     }
 
     /**
+     * Gets all soft-deleted campaigns.
+     * @return List of all soft-deleted campaigns
+     */
+    public List<Campain> getDeletedCampaigns() {
+        return dbConnectionManager.getSqliteRepository().getDeletedCampaigns();
+    }
+
+    /**
+     * Restores a soft-deleted campaign by setting is_active = 1 and deleted_at = NULL.
+     * Adds the campaign back to the local campaignsMap.
+     * @param uuid The UUID of the campaign to restore
+     * @return true if the campaign was successfully restored, false otherwise
+     */
+    public boolean restoreCampaign(String uuid) {
+        try {
+            // Restore in SQLite
+            boolean success = dbConnectionManager.getSqliteRepository().restoreCampaign(uuid);
+            
+            // Add back to local map if restore succeeded
+            if (success) {
+                Campain restoredCampaign = dbConnectionManager.getSqliteRepository().getCampaignById(uuid);
+                if (restoredCampaign != null) {
+                    campaignsMap.put(uuid, restoredCampaign);
+                }
+            }
+            
+            return success;
+        } catch (Exception e) {
+            System.err.println("Error restoring campaign: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
      * Performs hard delete of a campaign from all databases (Neo4j, Qdrant, SQLite).
      * This method should only be used for final cleanup after retention period.
      * @param uuid The UUID of the campaign to hard delete

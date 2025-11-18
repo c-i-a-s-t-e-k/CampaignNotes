@@ -5,6 +5,7 @@ import GraphCanvas from '../components/GraphCanvas';
 import SearchPanel from '../components/SearchPanel';
 import NoteEditor from '../components/NoteEditor';
 import NoteDetailView from '../components/NoteDetailView';
+import ArtifactDetailsPanel from '../components/ArtifactDetailsPanel';
 import { Button } from '../components/ui/button';
 import { ChevronLeft, ChevronRight, PanelLeftClose, PanelRightClose } from 'lucide-react';
 
@@ -21,6 +22,7 @@ const MainLayout: React.FC = () => {
     toggleSearchPanel,
     toggleNoteEditor,
     selectedNoteId,
+    selectedArtifactId,
     setSelectedNoteId,
   } = useUIStore();
 
@@ -79,7 +81,7 @@ const MainLayout: React.FC = () => {
           </Button>
         </div>
 
-        {/* Right Panel - Search & Note Detail */}
+        {/* Right Panel - Search, Artifact Details & Note Detail */}
         <div
           className={`border-l border-border transition-all duration-300 ${
             isSearchPanelOpen ? 'w-96' : 'w-0'
@@ -91,6 +93,8 @@ const MainLayout: React.FC = () => {
                 noteId={selectedNoteId}
                 onClose={() => setSelectedNoteId(null)}
               />
+            ) : selectedArtifactId ? (
+              <ArtifactDetailsPanel />
             ) : (
               <SearchPanel />
             )}
