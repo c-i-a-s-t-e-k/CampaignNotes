@@ -48,15 +48,20 @@ const convertToNVLFormat = (graph: Graph) => {
 interface UseNeo4jGraphOptions {
   graph: Graph | null;
   onNodeClick?: (nodeId: string) => void;
+  onNodeDoubleClick?: (nodeId: string) => void;
 }
 
-export const useNeo4jGraph = ({ graph, onNodeClick }: UseNeo4jGraphOptions) => {
+export const useNeo4jGraph = ({
+  graph,
+  onNodeClick,
+  onNodeDoubleClick,
+}: UseNeo4jGraphOptions) => {
   const { setSelectedNodeId } = useGraphStore();
 
   // Convert graph data to NVL format
   const nvlData = useCallback(() => {
     if (!graph) return { nodes: [], relationships: [] };
-    
+
     try {
       const converted = convertToNVLFormat(graph);
       console.log('[useNeo4jGraph] Graph data prepared:', {
@@ -71,13 +76,27 @@ export const useNeo4jGraph = ({ graph, onNodeClick }: UseNeo4jGraphOptions) => {
   }, [graph]);
 
   // Handle node click
-  const handleNodeClick = useCallback((node: NVLNode) => {
-    console.log('[useNeo4jGraph] Node clicked:', node.id);
-    setSelectedNodeId(node.id);
-    if (onNodeClick) {
-      onNodeClick(node.id);
-    }
-  }, [setSelectedNodeId, onNodeClick]);
+  const handleNodeClick = useCallback(
+    (node: NVLNode) => {
+      console.log('[useNeo4jGraph] Node clicked:', node.id);
+      setSelectedNodeId(node.id);
+      if (onNodeClick) {
+        onNodeClick(node.id);
+      }
+    },
+    [setSelectedNodeId, onNodeClick]
+  );
+
+  // Handle node double click
+  const handleNodeDoubleClick = useCallback(
+    (node: NVLNode) => {
+      console.log('[useNeo4jGraph] Node double-clicked:', node.id);
+      if (onNodeDoubleClick) {
+        onNodeDoubleClick(node.id);
+      }
+    },
+    [onNodeDoubleClick]
+  );
 
   // Handle canvas click
   const handleCanvasClick = useCallback(() => {
@@ -89,6 +108,7 @@ export const useNeo4jGraph = ({ graph, onNodeClick }: UseNeo4jGraphOptions) => {
     nodes: nvlData().nodes,
     relationships: nvlData().relationships,
     onNodeClick: handleNodeClick,
+    onNodeDoubleClick: handleNodeDoubleClick,
     onCanvasClick: handleCanvasClick,
   };
 };

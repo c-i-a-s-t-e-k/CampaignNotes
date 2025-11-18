@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -107,6 +108,86 @@ public class CampaignController {
             
         } catch (Exception e) {
             LOGGER.error("Error creating campaign: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * Delete a campaign by UUID (soft delete).
+     * 
+     * @param uuid Campaign UUID
+     * @return No content response
+     */
+    @DeleteMapping("/{uuid}")
+    public ResponseEntity<Void> deleteCampaign(@PathVariable String uuid) {
+        LOGGER.info("DELETE /api/campaigns/{} - Deleting campaign", uuid);
+        
+        try {
+            boolean success = campaignManager.deleteCampaign(uuid);
+            
+            if (!success) {
+                LOGGER.warn("Campaign not found for deletion: {}", uuid);
+                return ResponseEntity.notFound().build();
+            }
+            
+            LOGGER.info("Campaign deleted successfully: {}", uuid);
+            return ResponseEntity.noContent().build();
+            
+        } catch (Exception e) {
+            LOGGER.error("Error deleting campaign: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * Get all deleted campaigns.
+     * 
+     * @return List of deleted campaigns
+     */
+    @GetMapping("/deleted/list")
+    public ResponseEntity<List<CampaignDTO>> getDeletedCampaigns() {
+        LOGGER.info("GET /api/campaigns/deleted/list - Fetching deleted campaigns");
+        
+        List<Campain> deletedCampaigns = campaignManager.getDeletedCampaigns();
+        List<CampaignDTO> campaignDTOs = deletedCampaigns.stream()
+            .map(this::convertToDTO)
+            .collect(Collectors.toList());
+        
+        LOGGER.info("Returning {} deleted campaigns", campaignDTOs.size());
+        return ResponseEntity.ok(campaignDTOs);
+    }
+    
+    /**
+     * Restore a deleted campaign by UUID.
+     * 
+     * @param uuid Campaign UUID
+     * @return Restored campaign details
+     */
+    @PostMapping("/{uuid}/restore")
+    public ResponseEntity<CampaignDTO> restoreCampaign(@PathVariable String uuid) {
+        LOGGER.info("POST /api/campaigns/{}/restore - Restoring campaign", uuid);
+        
+        try {
+            boolean success = campaignManager.restoreCampaign(uuid);
+            
+            if (!success) {
+                LOGGER.warn("Campaign not found for restoration: {}", uuid);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Campain restoredCampaign = campaignManager.getCampaignByUuid(uuid);
+            if (restoredCampaign == null) {
+                LOGGER.error("Failed to retrieve restored campaign: {}", uuid);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            }
+            
+            CampaignDTO dto = convertToDTO(restoredCampaign);
+            LOGGER.info("Campaign restored successfully: {}", uuid);
+            
+            return ResponseEntity.ok(dto);
+            
+        } catch (Exception e) {
+            LOGGER.error("Error restoring campaign: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

@@ -121,6 +121,185 @@ public class GraphService {
     }
     
     /**
+     * Retrieves filtered graph for a specific note.
+     * Returns only nodes and relationships associated with the given note.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param noteId ID of the note to filter by
+     * @return GraphDTO containing filtered nodes and edges
+     */
+    public GraphDTO getGraphForNote(String campaignUuid, String noteId) {
+        LOGGER.info("Fetching filtered graph for campaign: {}, note: {}", campaignUuid, noteId);
+        
+        if (campaignUuid == null || campaignUuid.trim().isEmpty()) {
+            throw new IllegalArgumentException("Campaign UUID cannot be null or empty");
+        }
+        
+        if (noteId == null || noteId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Note ID cannot be null or empty");
+        }
+        
+        // Verify campaign exists
+        Campain campaign = campaignManager.getCampaignByUuid(campaignUuid);
+        if (campaign == null) {
+            throw new IllegalArgumentException("Campaign not found with UUID: " + campaignUuid);
+        }
+        
+        GraphDTO graph = new GraphDTO();
+        Driver driver = dbConnectionManager.getNeo4jRepository().getDriver();
+        
+        if (driver == null) {
+            LOGGER.error("Neo4j driver not available");
+            return graph; // Return empty graph
+        }
+        
+        try (Session session = driver.session()) {
+            // Map to track nodes we've already added
+            Map<Long, String> processedNodes = new HashMap<>();
+            
+            // Query to fetch nodes containing the noteId and relationships between them
+            // Using option C: only relations that also have the noteId in their note_ids
+            String cypher = 
+                "MATCH (n) " +
+                "WHERE n.campaign_uuid = $campaignUuid AND ANY(nid IN n.note_ids WHERE nid = $noteId) " +
+                "OPTIONAL MATCH (n)-[r]-(m) " +
+                "WHERE m.campaign_uuid = $campaignUuid AND ANY(nid IN m.note_ids WHERE nid = $noteId) AND ANY(rid IN r.note_ids WHERE rid = $noteId) " +
+                "RETURN n, r, m";
+            
+            Map<String, Object> params = Map.of(
+                "campaignUuid", campaignUuid,
+                "noteId", noteId
+            );
+            
+            Result result = session.run(cypher, params);
+            
+            while (result.hasNext()) {
+                Record record = result.next();
+                
+                // Process first node (n)
+                Value nValue = record.get("n");
+                if (!nValue.isNull()) {
+                    Node node = nValue.asNode();
+                    String nodeId = processNode(node, graph, processedNodes);
+                }
+                
+                // Process relationship (r) and second node (m) if they exist
+                Value rValue = record.get("r");
+                Value mValue = record.get("m");
+                
+                if (!rValue.isNull() && !mValue.isNull()) {
+                    Relationship rel = rValue.asRelationship();
+                    Node secondNode = mValue.asNode();
+                    
+                    // Process second node
+                    String secondNodeId = processNode(secondNode, graph, processedNodes);
+                    
+                    // Process relationship
+                    processRelationship(rel, graph, processedNodes);
+                }
+            }
+            
+            LOGGER.info("Filtered graph fetched successfully: {} nodes, {} edges", 
+                       graph.getNodes().size(), graph.getEdges().size());
+            
+        } catch (Exception e) {
+            LOGGER.error("Error fetching filtered graph for campaign {} and note {}: {}", 
+                        campaignUuid, noteId, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch filtered graph: " + e.getMessage(), e);
+        }
+        
+        return graph;
+    }
+    
+    /**
+     * Retrieves neighbors (directly connected nodes and relationships) for a specific artifact.
+     * Used for graph expansion on double click.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param artifactId ID of the artifact to get neighbors for
+     * @return GraphDTO containing neighbor nodes and connecting relationships
+     */
+    public GraphDTO getArtifactNeighbors(String campaignUuid, String artifactId) {
+        LOGGER.info("Fetching neighbors for artifact: {} in campaign: {}", artifactId, campaignUuid);
+        
+        if (campaignUuid == null || campaignUuid.trim().isEmpty()) {
+            throw new IllegalArgumentException("Campaign UUID cannot be null or empty");
+        }
+        
+        if (artifactId == null || artifactId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Artifact ID cannot be null or empty");
+        }
+        
+        // Verify campaign exists
+        Campain campaign = campaignManager.getCampaignByUuid(campaignUuid);
+        if (campaign == null) {
+            throw new IllegalArgumentException("Campaign not found with UUID: " + campaignUuid);
+        }
+        
+        GraphDTO graph = new GraphDTO();
+        Driver driver = dbConnectionManager.getNeo4jRepository().getDriver();
+        
+        if (driver == null) {
+            LOGGER.error("Neo4j driver not available");
+            return graph; // Return empty graph
+        }
+        
+        try (Session session = driver.session()) {
+            // Map to track nodes we've already added (by internal ID)
+            Map<Long, String> processedNodes = new HashMap<>();
+            
+            // Query to fetch the central node and its neighbors
+            String cypher = 
+                "MATCH (n {id: $artifactId, campaign_uuid: $campaignUuid}) " +
+                "OPTIONAL MATCH (n)-[r]-(m) " +
+                "WHERE m.campaign_uuid = $campaignUuid " +
+                "RETURN n, r, m";
+            
+            Map<String, Object> params = Map.of(
+                "artifactId", artifactId,
+                "campaignUuid", campaignUuid
+            );
+            
+            Result result = session.run(cypher, params);
+            
+            while (result.hasNext()) {
+                Record record = result.next();
+                
+                // Process first node (n - the central node)
+                Value nValue = record.get("n");
+                if (!nValue.isNull()) {
+                    Node node = nValue.asNode();
+                    String nodeId = processNode(node, graph, processedNodes);
+                }
+                
+                // Process relationship (r) and second node (m) if they exist
+                Value rValue = record.get("r");
+                Value mValue = record.get("m");
+                
+                if (!rValue.isNull() && !mValue.isNull()) {
+                    Relationship rel = rValue.asRelationship();
+                    Node secondNode = mValue.asNode();
+                    
+                    // Process second node (neighbor)
+                    String secondNodeId = processNode(secondNode, graph, processedNodes);
+                    
+                    // Process relationship
+                    processRelationship(rel, graph, processedNodes);
+                }
+            }
+            
+            LOGGER.info("Neighbors fetched successfully: {} nodes, {} edges", 
+                       graph.getNodes().size(), graph.getEdges().size());
+            
+        } catch (Exception e) {
+            LOGGER.error("Error fetching neighbors for artifact {}: {}", artifactId, e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch neighbors: " + e.getMessage(), e);
+        }
+        
+        return graph;
+    }
+    
+    /**
      * Processes a Neo4j node and adds it to the graph if not already processed.
      * 
      * @param node Neo4j node

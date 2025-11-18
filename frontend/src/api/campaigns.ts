@@ -29,3 +29,26 @@ export const createCampaign = async (request: CampaignCreateRequest): Promise<Ca
   return response.data;
 };
 
+/**
+ * Delete a campaign (soft delete)
+ */
+export const deleteCampaign = async (uuid: string): Promise<void> => {
+  await apiClient.delete(`/campaigns/${uuid}`);
+};
+
+/**
+ * Get all deleted campaigns
+ */
+export const getDeletedCampaigns = async (): Promise<Campaign[]> => {
+  const response = await apiClient.get<Campaign[]>('/campaigns/deleted/list');
+  return response.data;
+};
+
+/**
+ * Restore a deleted campaign
+ */
+export const restoreCampaign = async (uuid: string): Promise<Campaign> => {
+  const response = await apiClient.post<Campaign>(`/campaigns/${uuid}/restore`);
+  return response.data;
+};
+

@@ -353,6 +353,74 @@ public class SqliteRepository {
     }
     
     /**
+     * Gets all soft-deleted campaigns.
+     * @return List of campaigns with is_active = 0 or deleted_at IS NOT NULL
+     */
+    public List<Campain> getDeletedCampaigns() {
+        List<Campain> campaigns = new ArrayList<>();
+        String sql = """
+            SELECT uuid, name, neo4j_label, quadrant_collection_name, user_id, description, 
+                   created_at, updated_at, is_active, deleted_at, settings 
+            FROM campains WHERE is_active = 0 OR deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+            """;
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            while (rs.next()) {
+                Campain campaign = new Campain(
+                    rs.getString("uuid"),
+                    rs.getString("name"),
+                    rs.getString("neo4j_label"),
+                    rs.getString("quadrant_collection_name")
+                );
+                
+                campaign.setUserId(rs.getString("user_id"));
+                campaign.setDescription(rs.getString("description"));
+                campaign.setCreatedAt(rs.getLong("created_at"));
+                campaign.setUpdatedAt(rs.getLong("updated_at"));
+                campaign.setActive(rs.getBoolean("is_active"));
+                
+                Long deletedAt = rs.getLong("deleted_at");
+                if (!rs.wasNull()) {
+                    campaign.setDeletedAt(deletedAt);
+                }
+                
+                campaign.setSettings(rs.getString("settings"));
+                campaigns.add(campaign);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error retrieving deleted campaigns from database: " + e.getMessage());
+        }
+        return campaigns;
+    }
+    
+    /**
+     * Restores a soft-deleted campaign by setting is_active = 1 and deleted_at = NULL.
+     * @param uuid The UUID of the campaign to restore
+     * @return true if the campaign was successfully restored, false otherwise
+     * @throws SQLException if there is an error executing the SQL query
+     */
+    public boolean restoreCampaign(String uuid) throws SQLException {
+        String sql = """
+            UPDATE campains 
+            SET is_active = 1, deleted_at = NULL, updated_at = ? 
+            WHERE uuid = ?
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            long currentTime = System.currentTimeMillis() / 1000L;
+            pstmt.setLong(1, currentTime);
+            pstmt.setString(2, uuid);
+            
+            int affectedRows = pstmt.executeUpdate();
+            return affectedRows > 0;
+        }
+    }
+    
+    /**
      * Creates a default user if no users exist in the database.
      * This is needed for migration from old schema and testing purposes.
      */

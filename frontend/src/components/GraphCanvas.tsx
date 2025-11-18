@@ -1,11 +1,13 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { InteractiveNvlWrapper } from '@neo4j-nvl/react';
 import { useCampaignStore, useUIStore } from '../stores';
 import { useGraphData } from '../hooks/useGraphData';
 import { useNeo4jGraph } from '../hooks/useNeo4jGraph';
+import { getArtifactNeighbors } from '../api/graph';
 import { Card } from './ui/card';
 import { Loader2, Network, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from './ui/button';
+import { Graph, Node, Edge } from '../types';
 
 /**
  * Graph canvas component for visualizing campaign knowledge graph.
@@ -13,21 +15,130 @@ import { Button } from './ui/button';
  */
 const GraphCanvas: React.FC = () => {
   const { selectedCampaign } = useCampaignStore();
-  const { setSelectedArtifactId } = useUIStore();
+  const { setSelectedArtifactId, selectedNoteId } = useUIStore();
   const nvlRef = useRef<any>(null);
+  const lastClickRef = useRef<{ nodeId: string; timestamp: number } | null>(null);
+  
+  // Local state for expanded nodes and edges
+  const [expandedNodes, setExpandedNodes] = useState<Node[]>([]);
+  const [expandedEdges, setExpandedEdges] = useState<Edge[]>([]);
 
-  const { data: graph, isLoading, error } = useGraphData(selectedCampaign?.uuid);
+  const { data: graph, isLoading, error } = useGraphData(
+    selectedCampaign?.uuid,
+    selectedNoteId
+  );
 
-  // Handle node click
-  const handleNodeClick = (nodeId: string) => {
-    console.log('[GraphCanvas] Node clicked:', nodeId);
-    setSelectedArtifactId(nodeId);
-  };
+  // Reset expansions when note changes
+  useEffect(() => {
+    setExpandedNodes([]);
+    setExpandedEdges([]);
+  }, [selectedNoteId]);
+
+  // Handle double click to expand graph
+  const handleNodeDoubleClick = useCallback(
+    async (nodeId: string) => {
+      console.log('[GraphCanvas] Node double-clicked:', nodeId);
+
+      if (!selectedCampaign?.uuid) {
+        console.warn('[GraphCanvas] Campaign UUID not available');
+        return;
+      }
+
+      try {
+        // Fetch neighbors from API
+        const neighbors = await getArtifactNeighbors(
+          selectedCampaign.uuid,
+          nodeId
+        );
+
+        // Add new nodes to expanded state, avoiding duplicates
+        const newNodes = neighbors.nodes.filter(
+          (n) =>
+            !expandedNodes.some((en) => en.id === n.id) &&
+            !graph?.nodes.some((gn) => gn.id === n.id)
+        );
+
+        // Add new edges to expanded state, avoiding duplicates
+        const newEdges = neighbors.edges.filter(
+          (e) =>
+            !expandedEdges.some(
+              (ee) => ee.id === e.id && ee.source === e.source && ee.target === e.target
+            ) &&
+            !graph?.edges.some(
+              (ge) => ge.id === e.id && ge.source === e.source && ge.target === e.target
+            )
+        );
+
+        setExpandedNodes((prev) => [...prev, ...newNodes]);
+        setExpandedEdges((prev) => [...prev, ...newEdges]);
+
+        console.log(
+          '[GraphCanvas] Graph expanded: added',
+          newNodes.length,
+          'nodes and',
+          newEdges.length,
+          'edges'
+        );
+      } catch (err) {
+        console.error('[GraphCanvas] Error expanding graph:', err);
+      }
+    },
+    [selectedCampaign?.uuid, graph, expandedNodes, expandedEdges]
+  );
+
+  // Handle node click - detects double click for graph expansion
+  const handleNodeClick = useCallback(
+    (nodeId: string) => {
+      console.log('[GraphCanvas] Node clicked:', nodeId);
+      const currentTime = Date.now();
+      const doubleClickDelay = 300; // ms
+
+      // Check if this is a double click
+      if (
+        lastClickRef.current &&
+        lastClickRef.current.nodeId === nodeId &&
+        currentTime - lastClickRef.current.timestamp < doubleClickDelay
+      ) {
+        console.log('[GraphCanvas] Double click detected on node:', nodeId);
+        lastClickRef.current = null; // Reset to prevent triple-click
+        handleNodeDoubleClick(nodeId);
+      } else {
+        // Single click - select the artifact
+        setSelectedArtifactId(nodeId);
+        lastClickRef.current = { nodeId, timestamp: currentTime };
+      }
+    },
+    [setSelectedArtifactId, handleNodeDoubleClick]
+  );
+
+  // Merge API graph with local expansions
+  const mergedGraph = useMemo(() => {
+    if (!graph) return null;
+
+    return {
+      nodes: [
+        ...graph.nodes,
+        ...expandedNodes.filter(
+          (n) => !graph.nodes.some((gn) => gn.id === n.id)
+        ),
+      ],
+      edges: [
+        ...graph.edges,
+        ...expandedEdges.filter(
+          (e) =>
+            !graph.edges.some(
+              (ge) => ge.id === e.id && ge.source === e.source && ge.target === e.target
+            )
+        ),
+      ],
+    };
+  }, [graph, expandedNodes, expandedEdges]);
 
   // Prepare graph data for NVL
   const { nodes, relationships, onNodeClick } = useNeo4jGraph({
-    graph: graph || null,
+    graph: mergedGraph,
     onNodeClick: handleNodeClick,
+    onNodeDoubleClick: handleNodeDoubleClick,
   });
 
   // Zoom controls
@@ -95,6 +206,7 @@ const GraphCanvas: React.FC = () => {
       <div className="absolute top-4 left-4 z-10 bg-background/90 backdrop-blur-sm px-3 py-2 rounded-md border border-border shadow-sm">
         <p className="text-xs text-muted-foreground">
           {graph.nodes.length} artifacts • {graph.edges.length} relationships
+          {selectedNoteId && ' (filtered)'}
         </p>
       </div>
 
