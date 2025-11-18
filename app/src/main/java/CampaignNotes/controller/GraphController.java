@@ -1,5 +1,8 @@
 package CampaignNotes.controller;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -11,8 +14,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import CampaignNotes.CampaignManager;
 import CampaignNotes.GraphService;
+import CampaignNotes.NoteService;
 import CampaignNotes.dto.GraphDTO;
+import CampaignNotes.dto.NodeDTO;
+import CampaignNotes.dto.NoteDTO;
 import model.Campain;
+import model.Note;
 
 /**
  * REST Controller for graph visualization.
@@ -26,10 +33,12 @@ public class GraphController {
     
     private final GraphService graphService;
     private final CampaignManager campaignManager;
+    private final NoteService noteService;
     
-    public GraphController(GraphService graphService, CampaignManager campaignManager) {
+    public GraphController(GraphService graphService, CampaignManager campaignManager, NoteService noteService) {
         this.graphService = graphService;
         this.campaignManager = campaignManager;
+        this.noteService = noteService;
     }
     
     /**
@@ -64,6 +73,84 @@ public class GraphController {
             LOGGER.error("Error fetching graph: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+    
+    /**
+     * Get all notes associated with a specific artifact.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param artifactId ID of the artifact
+     * @return List of notes associated with the artifact
+     */
+    @GetMapping("/artifacts/{artifactId}/notes")
+    public ResponseEntity<List<NoteDTO>> getArtifactNotes(
+            @PathVariable String campaignUuid,
+            @PathVariable String artifactId) {
+        
+        LOGGER.info("GET /api/campaigns/{}/graph/artifacts/{}/notes - Fetching artifact notes", 
+                   campaignUuid, artifactId);
+        
+        // Validate campaign exists
+        Campain campaign = campaignManager.getCampaignByUuid(campaignUuid);
+        if (campaign == null) {
+            LOGGER.warn("Campaign not found: {}", campaignUuid);
+            return ResponseEntity.notFound().build();
+        }
+        
+        try {
+            // Get the full graph to find the artifact
+            GraphDTO graph = graphService.getGraphForCampaign(campaignUuid);
+            
+            // Find the artifact node
+            NodeDTO artifactNode = graph.getNodes().stream()
+                .filter(node -> node.getId().equals(artifactId))
+                .findFirst()
+                .orElse(null);
+            
+            if (artifactNode == null) {
+                LOGGER.warn("Artifact not found: {}", artifactId);
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Get note IDs from the artifact
+            List<String> noteIds = artifactNode.getNoteIds();
+            
+            if (noteIds == null || noteIds.isEmpty()) {
+                LOGGER.info("No notes found for artifact: {}", artifactId);
+                return ResponseEntity.ok(new ArrayList<>());
+            }
+            
+            // Retrieve notes from Qdrant
+            String collectionName = campaign.getQuadrantCollectionName();
+            List<Note> notes = noteService.getNotesByIds(noteIds, collectionName);
+            
+            // Convert to DTOs
+            List<NoteDTO> noteDTOs = new ArrayList<>();
+            for (Note note : notes) {
+                noteDTOs.add(convertToDTO(note));
+            }
+            
+            LOGGER.info("Found {} notes for artifact {}", noteDTOs.size(), artifactId);
+            return ResponseEntity.ok(noteDTOs);
+            
+        } catch (Exception e) {
+            LOGGER.error("Error fetching artifact notes: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * Converts a Note entity to NoteDTO.
+     */
+    private NoteDTO convertToDTO(Note note) {
+        return new NoteDTO(
+            note.getId(),
+            note.getCampaignUuid(),
+            note.getTitle(),
+            note.getContent(),
+            note.getCreatedAt(),
+            note.getUpdatedAt()
+        );
     }
 }
 

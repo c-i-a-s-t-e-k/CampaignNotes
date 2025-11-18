@@ -1,18 +1,49 @@
-import React from 'react';
-import { useCampaignStore } from '../stores';
+import React, { useRef, useEffect } from 'react';
+import { InteractiveNvlWrapper } from '@neo4j-nvl/react';
+import { useCampaignStore, useUIStore } from '../stores';
 import { useGraphData } from '../hooks/useGraphData';
+import { useNeo4jGraph } from '../hooks/useNeo4jGraph';
 import { Card } from './ui/card';
-import { Loader2, Network } from 'lucide-react';
+import { Loader2, Network, ZoomIn, ZoomOut } from 'lucide-react';
+import { Button } from './ui/button';
 
 /**
  * Graph canvas component for visualizing campaign knowledge graph.
- * This is a simplified MVP version showing graph data as a list.
- * Full Neo4j NVL integration can be added in future iterations.
+ * Uses Neo4j Visualization Library for interactive graph rendering.
  */
 const GraphCanvas: React.FC = () => {
   const { selectedCampaign } = useCampaignStore();
+  const { setSelectedArtifactId } = useUIStore();
+  const nvlRef = useRef<any>(null);
 
   const { data: graph, isLoading, error } = useGraphData(selectedCampaign?.uuid);
+
+  // Handle node click
+  const handleNodeClick = (nodeId: string) => {
+    console.log('[GraphCanvas] Node clicked:', nodeId);
+    setSelectedArtifactId(nodeId);
+  };
+
+  // Prepare graph data for NVL
+  const { nodes, relationships, onNodeClick } = useNeo4jGraph({
+    graph: graph || null,
+    onNodeClick: handleNodeClick,
+  });
+
+  // Zoom controls
+  const handleZoomIn = () => {
+    if (nvlRef.current) {
+      const currentZoom = nvlRef.current.getScale?.() || 1;
+      nvlRef.current.setZoom?.(currentZoom * 1.3);
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (nvlRef.current) {
+      const currentZoom = nvlRef.current.getScale?.() || 1;
+      nvlRef.current.setZoom?.(currentZoom * 0.7);
+    }
+  };
 
   if (!selectedCampaign) {
     return (
@@ -59,107 +90,64 @@ const GraphCanvas: React.FC = () => {
   }
 
   return (
-    <Card className="p-6 h-full overflow-auto">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold mb-2">Knowledge Graph</h3>
-        <p className="text-sm text-muted-foreground">
-          {graph.nodes.length} artifacts, {graph.edges.length} relationships
-        </p>
-      </div>
-
-      {/* Simplified visualization - MVP version */}
-      <div className="space-y-6">
-        {/* Artifacts */}
-        <div>
-          <h4 className="text-sm font-semibold mb-3">Artifacts</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {graph.nodes.map((node) => (
-              <div
-                key={node.id}
-                className="p-3 bg-accent rounded-md border border-border"
-              >
-                <div className="flex items-start gap-2">
-                  <div
-                    className="h-3 w-3 rounded-full flex-shrink-0 mt-1"
-                    style={{
-                      backgroundColor: getColorForType(node.type),
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{node.name}</p>
-                    <p className="text-xs text-muted-foreground">{node.type}</p>
-                    {node.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {node.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Relationships */}
-        {graph.edges.length > 0 && (
-          <div>
-            <h4 className="text-sm font-semibold mb-3">Relationships</h4>
-            <div className="space-y-2">
-              {graph.edges.map((edge) => {
-                const sourceNode = graph.nodes.find((n) => n.id === edge.source);
-                const targetNode = graph.nodes.find((n) => n.id === edge.target);
-
-                return (
-                  <div
-                    key={edge.id}
-                    className="p-3 bg-accent rounded-md text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{sourceNode?.name || edge.source}</span>
-                      <span className="text-muted-foreground">→</span>
-                      <span className="text-xs bg-background px-2 py-0.5 rounded">
-                        {edge.label}
-                      </span>
-                      <span className="text-muted-foreground">→</span>
-                      <span className="font-medium">{targetNode?.name || edge.target}</span>
-                    </div>
-                    {edge.description && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {edge.description}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-6 p-3 bg-muted rounded-md">
+    <Card className="h-full relative overflow-hidden">
+      {/* Graph info header */}
+      <div className="absolute top-4 left-4 z-10 bg-background/90 backdrop-blur-sm px-3 py-2 rounded-md border border-border shadow-sm">
         <p className="text-xs text-muted-foreground">
-          <strong>Note:</strong> This is a simplified view. Full interactive graph
-          visualization with Neo4j NVL can be implemented in future versions.
+          {graph.nodes.length} artifacts • {graph.edges.length} relationships
         </p>
+      </div>
+
+      {/* Zoom controls */}
+      <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleZoomIn}
+          className="bg-background/90 backdrop-blur-sm"
+          title="Zoom in"
+        >
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleZoomOut}
+          className="bg-background/90 backdrop-blur-sm"
+          title="Zoom out"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* NVL Interactive Wrapper */}
+      <div className="nvl-container overflow-hidden h-full w-full">
+        <InteractiveNvlWrapper
+          ref={nvlRef}
+          nodes={nodes}
+          rels={relationships}
+          nvlOptions={{
+            initialZoom: 1,
+            minZoom: 0.1,
+            maxZoom: 4,
+            layout: 'forceDirected',
+            allowDynamicMinZoom: true,
+            disableWebGL: false,
+            instanceId: 'campaign-graph',
+          }}
+          mouseEventCallbacks={{
+            onNodeClick: (node) => onNodeClick(node),
+            onCanvasClick: true,
+            onPan: true,
+            onZoom: true,
+            onDrag: true,
+            onDragEnd: true,
+            onDragStart: true,
+          }}
+        />
       </div>
     </Card>
   );
 };
 
-// Helper function to assign colors to artifact types
-const getColorForType = (type: string): string => {
-  const colors: Record<string, string> = {
-    character: '#3b82f6',
-    location: '#10b981',
-    item: '#f59e0b',
-    event: '#ef4444',
-    organization: '#8b5cf6',
-    concept: '#06b6d4',
-  };
-
-  const lowerType = type.toLowerCase();
-  return colors[lowerType] || '#6b7280';
-};
-
 export default GraphCanvas;
-

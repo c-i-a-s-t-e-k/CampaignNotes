@@ -12,8 +12,9 @@ interface UIStore {
   isSearchPanelOpen: boolean;
   isNoteEditorOpen: boolean;
   
-  // Selected note for detail view
+  // Selected items for detail view
   selectedNoteId: string | null;
+  selectedArtifactId: string | null;
   
   // Search state
   searchQuery: string;
@@ -27,6 +28,7 @@ interface UIStore {
   setSearchPanelOpen: (open: boolean) => void;
   setNoteEditorOpen: (open: boolean) => void;
   setSelectedNoteId: (noteId: string | null) => void;
+  setSelectedArtifactId: (artifactId: string | null) => void;
   setSearchQuery: (query: string) => void;
   setSearchResults: (results: SearchResult[]) => void;
   clearSearch: () => void;
@@ -40,6 +42,7 @@ export const useUIStore = create<UIStore>()(
       isSearchPanelOpen: true,
       isNoteEditorOpen: true,
       selectedNoteId: null,
+      selectedArtifactId: null,
       searchQuery: '',
       searchResults: [],
       
@@ -58,6 +61,7 @@ export const useUIStore = create<UIStore>()(
       setSearchPanelOpen: (open) => set({ isSearchPanelOpen: open }),
       setNoteEditorOpen: (open) => set({ isNoteEditorOpen: open }),
       setSelectedNoteId: (noteId) => set({ selectedNoteId: noteId }),
+      setSelectedArtifactId: (artifactId) => set({ selectedArtifactId: artifactId }),
       setSearchQuery: (query) => set({ searchQuery: query }),
       setSearchResults: (results) => set({ searchResults: results }),
       clearSearch: () => set({ searchQuery: '', searchResults: [] }),
