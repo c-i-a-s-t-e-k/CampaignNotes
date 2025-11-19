@@ -6,6 +6,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -23,12 +26,15 @@ import model.LLMResponse;
  */
 public class OpenAILLMService {
     
+    private static final Logger LOGGER = LoggerFactory.getLogger(OpenAILLMService.class);
+    
     private final String openaiApiKey;
     private final String openaiApiUrl;
     private final OpenAIClient client; // SDK client for future use
     private final HttpClient httpClient;
     private final Gson gson;
     private final LangfuseClient langfuseClient;
+    public static final Integer MAX_TOKENS = 10068; // two times one output with huge input note ~500 words in Polish
     
     /**
      * Constructor that initializes the OpenAI LLM Service with configuration from environment variables.
@@ -145,6 +151,7 @@ public class OpenAILLMService {
      */
     private LLMResponse generateWithModel(String model, String systemPrompt, String inputPrompt) {
         long startTime = System.currentTimeMillis();
+        LOGGER.info("[LLM] Starting {} generation", model);
         
         try {
             String chatEndpoint = openaiApiUrl + "/chat/completions";
@@ -152,7 +159,7 @@ public class OpenAILLMService {
             // Create request payload
             JsonObject payload = new JsonObject();
             payload.addProperty("model", model);
-            payload.addProperty("max_completion_tokens", 4000);
+            payload.addProperty("max_completion_tokens", MAX_TOKENS);
 //            payload.addProperty("temperature", 0.3);
             
             // Create messages array
@@ -178,6 +185,7 @@ public class OpenAILLMService {
             
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             long duration = System.currentTimeMillis() - startTime;
+            LOGGER.info("[LLM] {} generation completed in {}ms", model, duration);
             
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 JsonObject responseJson = gson.fromJson(response.body(), JsonObject.class);

@@ -88,3 +88,14 @@ export interface NoteConfirmationRequest {
   approvedMergeProposals: MergeProposal[];
 }
 
+export interface NoteProcessingStatus {
+  noteId: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'not_found';
+  stage?: string;
+  stageDescription?: string;
+  progress?: number;
+  result?: NoteCreateResponse;
+  errorMessage?: string;
+  startedAt: string;
+  completedAt?: string;
+}

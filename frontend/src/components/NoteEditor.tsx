@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createNote } from '../api';
 import { NoteCreateRequest, NoteCreateResponse } from '../types';
 import { useCampaignStore } from '../stores';
+import { useNoteProcessing } from '../hooks/useNoteProcessing';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
@@ -11,6 +12,7 @@ import { Card } from './ui/card';
 import toast from 'react-hot-toast';
 import NoteCreateConfirmDialog from './NoteCreateConfirmDialog';
 import DeduplicationModal from './DeduplicationModal';
+import NoteProcessingProgress from './NoteProcessingProgress';
 
 /**
  * Note editor component for creating new notes.
@@ -20,6 +22,13 @@ const NoteEditor: React.FC = () => {
   const queryClient = useQueryClient();
   const [confirmDialogData, setConfirmDialogData] = useState<NoteCreateResponse | null>(null);
   const [deduplicationModalData, setDeduplicationModalData] = useState<NoteCreateResponse | null>(null);
+  const [processingNoteId, setProcessingNoteId] = useState<string | null>(null);
+
+  // Hook for polling note processing status
+  const { data: processingStatus, isLoading: isStatusLoading } = useNoteProcessing(
+    selectedCampaign?.uuid,
+    processingNoteId || undefined
+  );
 
   const {
     register,
@@ -40,8 +49,12 @@ const NoteEditor: React.FC = () => {
       return createNote(selectedCampaign.uuid, data);
     },
     onSuccess: (data) => {
-      // Check if deduplication requires user confirmation
-      if (data.requiresUserConfirmation || (data.artifactMergeProposals && data.artifactMergeProposals.length > 0)) {
+      // Check if async processing is starting (status: "processing")
+      if (data.success && !data.artifactCount && !data.relationshipCount) {
+        // This is the initial 202 Accepted response, start polling
+        setProcessingNoteId(data.noteId);
+        toast.success('Note is being processed...');
+      } else if (data.requiresUserConfirmation || (data.artifactMergeProposals && data.artifactMergeProposals.length > 0)) {
         // Show DeduplicationModal instead of ConfirmDialog
         setDeduplicationModalData(data);
       } else {
@@ -58,6 +71,26 @@ const NoteEditor: React.FC = () => {
       console.error(error);
     },
   });
+
+  // Handle processing status changes
+  useEffect(() => {
+    if (processingStatus?.status === 'completed' && processingStatus.result) {
+      setProcessingNoteId(null);
+      const result = processingStatus.result;
+      
+      if (result.requiresUserConfirmation || (result.artifactMergeProposals && result.artifactMergeProposals.length > 0)) {
+        // Show DeduplicationModal
+        setDeduplicationModalData(result);
+      } else {
+        // No deduplication needed or all auto-merged - show ConfirmDialog
+        toast.success('Note created successfully!');
+        setConfirmDialogData(result);
+      }
+    } else if (processingStatus?.status === 'failed') {
+      setProcessingNoteId(null);
+      toast.error(processingStatus.errorMessage || 'Note processing failed');
+    }
+  }, [processingStatus?.status, processingStatus?.result, processingStatus?.errorMessage]);
 
   // Handle deduplication confirmation
   const handleDeduplicationConfirmed = (finalData: NoteCreateResponse) => {
@@ -93,6 +126,26 @@ const NoteEditor: React.FC = () => {
           Select a campaign to add notes
         </p>
       </Card>
+    );
+  }
+
+  // Show processing progress while async processing is happening
+  if (processingNoteId && processingStatus) {
+    return (
+      <NoteProcessingProgress
+        status={processingStatus}
+        onComplete={(result) => {
+          if (result.requiresUserConfirmation || (result.artifactMergeProposals && result.artifactMergeProposals.length > 0)) {
+            setDeduplicationModalData(result);
+          } else {
+            setConfirmDialogData(result);
+          }
+        }}
+        onError={(errorMessage) => {
+          setProcessingNoteId(null);
+          toast.error(errorMessage);
+        }}
+      />
     );
   }
 

@@ -18,11 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 import CampaignNotes.ArtifactGraphService;
 import CampaignNotes.CampaignManager;
 import CampaignNotes.DeduplicationSessionManager;
+import CampaignNotes.NoteProcessingStatusService;
 import CampaignNotes.NoteService;
 import CampaignNotes.dto.NoteConfirmationRequest;
 import CampaignNotes.dto.NoteCreateRequest;
 import CampaignNotes.dto.NoteCreateResponse;
 import CampaignNotes.dto.NoteDTO;
+import CampaignNotes.dto.NoteProcessingStatus;
 import CampaignNotes.dto.deduplication.MergeProposal;
 import jakarta.validation.Valid;
 import model.Artifact;
@@ -45,29 +47,34 @@ public class NoteController {
     private final CampaignManager campaignManager;
     private final DeduplicationSessionManager sessionManager;
     private final ArtifactGraphService artifactService;
+    private final NoteProcessingStatusService statusService;
     
     public NoteController(NoteService noteService, CampaignManager campaignManager,
                          DeduplicationSessionManager sessionManager,
-                         ArtifactGraphService artifactService) {
+                         ArtifactGraphService artifactService,
+                         NoteProcessingStatusService statusService) {
         this.noteService = noteService;
         this.campaignManager = campaignManager;
         this.sessionManager = sessionManager;
         this.artifactService = artifactService;
+        this.statusService = statusService;
     }
     
     /**
-     * Create a new note in a campaign.
+     * Create a new note in a campaign asynchronously.
+     * Returns 202 Accepted immediately while processing happens in background.
+     * Use GET /notes/{noteId}/status to poll for completion.
      * 
      * @param campaignUuid UUID of the campaign
      * @param request Note creation request
-     * @return Response with note details and extracted artifacts
+     * @return 202 Accepted response with note ID for polling
      */
     @PostMapping
     public ResponseEntity<NoteCreateResponse> createNote(
             @PathVariable String campaignUuid,
             @Valid @RequestBody NoteCreateRequest request) {
         
-        LOGGER.info("POST /api/campaigns/{}/notes - Creating note: {}", campaignUuid, request.getTitle());
+        LOGGER.info("POST /api/campaigns/{}/notes - Creating note asynchronously: {}", campaignUuid, request.getTitle());
         
         // Validate campaign exists
         Campain campaign = campaignManager.getCampaignByUuid(campaignUuid);
@@ -93,26 +100,63 @@ public class NoteController {
             // Create note object
             Note note = new Note(campaignUuid, request.getTitle(), request.getContent());
             
-            // Add note to campaign (this triggers embedding generation and artifact extraction)
-            NoteCreateResponse response = noteService.addNoteWithResponse(note, campaign);
+            // Create processing status entry in cache
+            NoteProcessingStatus status = new NoteProcessingStatus(note.getId());
+            status.setStatus("processing");
+            status.setStage("pending");
+            status.setProgress(0);
+            statusService.updateStatus(status);
             
-            if (!response.isSuccess()) {
-                LOGGER.error("Failed to add note to campaign: {}", response.getMessage());
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-            }
+            LOGGER.info("Started async processing for note: {}", note.getId());
             
-            LOGGER.info("Note created successfully: {} with {} artifacts and {} relationships", 
-                       response.getNoteId(), 
-                       response.getArtifactCount(), 
-                       response.getRelationshipCount());
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+            // Start async processing in background thread
+            noteService.addNoteAsync(note, campaign, statusService);
+            
+            // Return 202 Accepted immediately
+            NoteCreateResponse acceptedResponse = new NoteCreateResponse();
+            acceptedResponse.setNoteId(note.getId());
+            acceptedResponse.setTitle(request.getTitle());
+            acceptedResponse.setSuccess(true);
+            acceptedResponse.setMessage("Note is being processed");
+            
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(acceptedResponse);
             
         } catch (Exception e) {
-            LOGGER.error("Error creating note: {}", e.getMessage(), e);
+            LOGGER.error("Error starting async note processing: {}", e.getMessage(), e);
             NoteCreateResponse errorResponse = new NoteCreateResponse();
             errorResponse.setSuccess(false);
-            errorResponse.setMessage("Internal server error: " + e.getMessage());
+            errorResponse.setMessage("Error starting note processing: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+    
+    /**
+     * Get the processing status of a note.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param noteId ID of the note
+     * @return Processing status with progress information
+     */
+    @GetMapping("/{noteId}/status")
+    public ResponseEntity<NoteProcessingStatus> getNoteStatus(
+            @PathVariable String campaignUuid,
+            @PathVariable String noteId) {
+        
+        LOGGER.info("GET /api/campaigns/{}/notes/{}/status - Fetching note status", campaignUuid, noteId);
+        
+        try {
+            NoteProcessingStatus status = statusService.getStatus(noteId);
+            
+            if (status.getStatus().equals("not_found")) {
+                LOGGER.warn("Note status not found: {}", noteId);
+                return ResponseEntity.notFound().build();
+            }
+            
+            return ResponseEntity.ok(status);
+            
+        } catch (Exception e) {
+            LOGGER.error("Error fetching note status: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
     

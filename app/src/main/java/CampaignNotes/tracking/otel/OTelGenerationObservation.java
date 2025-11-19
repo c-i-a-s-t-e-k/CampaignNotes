@@ -89,7 +89,7 @@ public class OTelGenerationObservation implements AutoCloseable {
      * @return this observation for method chaining
      */
     public OTelGenerationObservation withPrompt(String prompt) {
-        span.setAttribute("gen_ai.prompt", prompt.substring(0, Math.min(1000, prompt.length())));
+        span.setAttribute("gen_ai.prompt", prompt);
         return this;
     }
     
@@ -101,7 +101,7 @@ public class OTelGenerationObservation implements AutoCloseable {
      * @return this observation for method chaining
      */
     public OTelGenerationObservation withResponse(String response) {
-        span.setAttribute("gen_ai.completion", response.substring(0, Math.min(1000, response.length())));
+        span.setAttribute("gen_ai.completion", response);
         return this;
     }
     
