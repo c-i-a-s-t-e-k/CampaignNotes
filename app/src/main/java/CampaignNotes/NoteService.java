@@ -15,7 +15,6 @@ import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.deduplication.DeduplicationCoordinator;
 import CampaignNotes.dto.NoteCreateResponse;
-import CampaignNotes.dto.NoteProcessingStatus;
 import CampaignNotes.dto.deduplication.MergeProposal;
 import CampaignNotes.llm.OpenAIEmbeddingService;
 import CampaignNotes.tracking.otel.OTelEmbeddingObservation;
@@ -770,6 +769,8 @@ public class NoteService {
      * - deduplication (80-95%)
      * - saving (95-100%)
      * 
+     * Atomically sets completion result with deduplication information.
+     * 
      * @param note the note to add
      * @param campaign the campaign to add the note to
      * @param statusService service for tracking status
@@ -785,41 +786,24 @@ public class NoteService {
             NoteCreateResponse response = addNoteWithResponse(note, campaign, statusService, noteId);
             
             if (!response.isSuccess()) {
-                // Mark as failed
-                NoteProcessingStatus errorStatus = statusService.getStatus(noteId);
-                errorStatus.setStatus("failed");
-                errorStatus.setErrorMessage(response.getMessage());
-                statusService.updateStatus(errorStatus);
+                // Mark as failed - atomically update status with error message
+                statusService.setCompletionResult(noteId, null, false, response.getMessage());
                 
                 return CompletableFuture.failedFuture(
                     new RuntimeException("Failed to add note: " + response.getMessage())
                 );
             }
             
-            // Mark as completed
-            NoteProcessingStatus finalStatus = statusService.getStatus(noteId);
-            finalStatus.setStatus("completed");
-            finalStatus.setStage("completed");
-            finalStatus.setStageDescription("Notatka została przetworzna pomyślnie");
-            finalStatus.setProgress(100);
-            finalStatus.setResult(response);
-            finalStatus.setCompletedAt(LocalDateTime.now());
-            statusService.updateStatus(finalStatus);
+            // Atomically set completion with result (contains deduplication info)
+            statusService.setCompletionResult(noteId, response, true, null);
             
             return CompletableFuture.completedFuture(response);
             
         } catch (Exception e) {
-            System.err.println("Error during async note processing: " + e.getMessage());
+            LOGGER.error("[{}] Error during async note processing: {}", noteId, e.getMessage(), e);
             
-            // Mark as failed
-            try {
-                NoteProcessingStatus errorStatus = statusService.getStatus(noteId);
-                errorStatus.setStatus("failed");
-                errorStatus.setErrorMessage(e.getMessage());
-                statusService.updateStatus(errorStatus);
-            } catch (Exception statusError) {
-                System.err.println("Error updating error status: " + statusError.getMessage());
-            }
+            // Mark as failed - atomically update status with error message
+            statusService.setCompletionResult(noteId, null, false, e.getMessage());
             
             return CompletableFuture.failedFuture(e);
         }

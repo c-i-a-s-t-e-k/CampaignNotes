@@ -29,6 +29,7 @@ repositories {
 dependencies {
     // Use JUnit 5 (Jupiter) for testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
     
     // Mockito for mocking in tests
     testImplementation 'org.mockito:mockito-core:5.15.2'

@@ -24,7 +24,9 @@ export const useNoteProcessing = (
     queryKey: ['noteStatus', campaignUuid, noteId],
     queryFn: () => getNoteStatus(campaignUuid!, noteId!),
     enabled: !!campaignUuid && !!noteId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
+      // Access the actual data from query.state.data
+      const data = query.state.data;
       // Stop polling when processing is complete or failed
       if (data?.status === 'completed' || data?.status === 'failed') {
         return false;

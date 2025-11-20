@@ -31,6 +31,23 @@ public class NoteProcessingStatus {
         this.startedAt = LocalDateTime.now();
     }
     
+    /**
+     * Copy constructor for creating a defensive copy.
+     * 
+     * @param other the object to copy from
+     */
+    public NoteProcessingStatus(NoteProcessingStatus other) {
+        this.noteId = other.noteId;
+        this.status = other.status;
+        this.stage = other.stage;
+        this.stageDescription = other.stageDescription;
+        this.progress = other.progress;
+        this.result = other.result;
+        this.errorMessage = other.errorMessage;
+        this.startedAt = other.startedAt;
+        this.completedAt = other.completedAt;
+    }
+    
     // Getters and Setters
     public String getNoteId() {
         return noteId;

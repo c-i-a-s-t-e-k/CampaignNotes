@@ -34,7 +34,7 @@ public class OpenAILLMService {
     private final HttpClient httpClient;
     private final Gson gson;
     private final LangfuseClient langfuseClient;
-    public static final Integer MAX_TOKENS = 10068; // two times one output with huge input note ~500 words in Polish
+    // public static final Integer MAX_TOKENS = 10068; // two times one output with huge input note ~500 words in Polish
     
     /**
      * Constructor that initializes the OpenAI LLM Service with configuration from environment variables.
@@ -159,7 +159,7 @@ public class OpenAILLMService {
             // Create request payload
             JsonObject payload = new JsonObject();
             payload.addProperty("model", model);
-            payload.addProperty("max_completion_tokens", MAX_TOKENS);
+            // payload.addProperty("max_completion_tokens", MAX_TOKENS);
 //            payload.addProperty("temperature", 0.3);
             
             // Create messages array
