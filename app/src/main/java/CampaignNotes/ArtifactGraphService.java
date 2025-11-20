@@ -42,8 +42,8 @@ public class ArtifactGraphService {
     private final DeduplicationConfig deduplicationConfig;
     private final Gson gson;
     
-    // Timeout for the entire workflow (1 minute as per PRD)
-    private static final long WORKFLOW_TIMEOUT_MS = 60000;
+    // Timeout for the entire workflow (10 minute as per PRD)
+    private static final long WORKFLOW_TIMEOUT_MS = 600000;
     
     // LLM models used for different stages of artifact processing
     private static final String ARTIFACT_EXTRACTION_MODEL = "o3-mini";

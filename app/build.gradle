@@ -29,6 +29,7 @@ repositories {
 dependencies {
     // Use JUnit 5 (Jupiter) for testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
     
     // Mockito for mocking in tests
     testImplementation 'org.mockito:mockito-core:5.15.2'
@@ -76,6 +77,10 @@ dependencies {
     
     // OpenTelemetry Semantic Conventions
     implementation 'io.opentelemetry.semconv:opentelemetry-semconv:1.25.0-alpha'
+    
+    // Spring Cache with Caffeine
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
 }
 
 java {

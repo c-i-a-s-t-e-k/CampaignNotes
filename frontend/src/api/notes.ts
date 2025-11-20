@@ -2,7 +2,7 @@
  * Note API functions
  */
 
-import { Note, NoteCreateRequest, NoteCreateResponse, NoteConfirmationRequest } from '../types';
+import { Note, NoteCreateRequest, NoteCreateResponse, NoteConfirmationRequest, NoteProcessingStatus } from '../types';
 import apiClient from './client';
 
 /**
@@ -24,6 +24,19 @@ export const createNote = async (
  */
 export const getNote = async (campaignUuid: string, noteId: string): Promise<Note> => {
   const response = await apiClient.get<Note>(`/campaigns/${campaignUuid}/notes/${noteId}`);
+  return response.data;
+};
+
+/**
+ * Get the processing status of a note being created asynchronously
+ */
+export const getNoteStatus = async (
+  campaignUuid: string,
+  noteId: string
+): Promise<NoteProcessingStatus> => {
+  const response = await apiClient.get<NoteProcessingStatus>(
+    `/campaigns/${campaignUuid}/notes/${noteId}/status`
+  );
   return response.data;
 };
 

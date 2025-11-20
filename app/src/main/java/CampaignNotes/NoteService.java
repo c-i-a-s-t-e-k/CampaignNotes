@@ -5,6 +5,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 
 import CampaignNotes.config.DeduplicationConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
@@ -32,6 +37,8 @@ import model.Relationship;
  * Handles note validation, embedding generation, and delegates storage to CampaignManager.
  */
 public class NoteService {
+    
+    private static final Logger LOGGER = LoggerFactory.getLogger(NoteService.class);
     
     private final CampaignManager campaignManager; 
     private final OpenAIEmbeddingService embeddingService;
@@ -111,7 +118,7 @@ public class NoteService {
     }
     
     /**
-     * Adds a note to the specified campaign and returns detailed response.
+     * Adds a note to the specified campaign and returns detailed response with progress tracking.
      * Validates the note, generates embedding, stores it, and processes artifacts.
      * For override notes, ensures that there are existing notes to override.
      * 
@@ -120,11 +127,22 @@ public class NoteService {
      * - Creates an observation for the embedding generation
      * - Automatically reports success/failure status
      * 
+     * Updates processing status at key stages:
+     * - embedding (0-20%)
+     * - nae (20-50%)
+     * - are (50-80%)
+     * - deduplication (80-95%)
+     * - saving (95-100%)
+     * 
      * @param note the note to add
      * @param campaign the campaign to add the note to
+     * @param statusService optional service for tracking processing status
+     * @param noteId optional note ID for status tracking
      * @return NoteCreateResponse with success status, note info, and artifact counts
      */
-    public NoteCreateResponse addNoteWithResponse(Note note, Campain campaign) {
+    public NoteCreateResponse addNoteWithResponse(Note note, Campain campaign,
+                                                  NoteProcessingStatusService statusService,
+                                                  String noteId) {
         // Validation: null checks
         if (note == null || campaign == null) {
             String error = "Note and campaign cannot be null";
@@ -152,9 +170,10 @@ public class NoteService {
         long startTime = System.currentTimeMillis();
         ArtifactProcessingResult artifactResult = null;
         
-        // Create trace for the entire note adding workflow
+        LOGGER.info("[{}] Note processing started", note.getId());
+        
         try (OTelTrace trace = traceManager.createTrace(
-            "note-embedding",
+            "note-creation-workflow",
             campaign.getUuid(),
             note.getId(),
             null, // userId
@@ -162,6 +181,7 @@ public class NoteService {
         )) {
             trace.addEvent("embedding_started");
             
+            EmbeddingResult embeddingResult;
             // Create observation for embedding generation
             try (OTelEmbeddingObservation observation = 
                 new OTelEmbeddingObservation("embedding-generation", trace.getContext())) {
@@ -169,14 +189,27 @@ public class NoteService {
                 observation.withModel(embeddingService.getEmbeddingModel())
                            .withInput(note);
                 
+                // Update status: Embedding stage starting
+                if (statusService != null && noteId != null) {
+                    statusService.updateStage(noteId, "embedding", "Generowanie embeddingu notatki...", 5);
+                }
+                
                 // Generate embedding with exact token usage
+                LOGGER.info("[{}] Starting embedding generation", note.getId());
+                long embeddingStart = System.currentTimeMillis();
                 String textForEmbedding = note.getFullTextForEmbedding();
-                EmbeddingResult embeddingResult = 
+                embeddingResult = 
                     embeddingService.generateEmbeddingWithUsage(textForEmbedding);
                 
-                long embeddingDuration = System.currentTimeMillis() - startTime;
+                long embeddingDuration = System.currentTimeMillis() - embeddingStart;
+                LOGGER.info("[{}] Embedding generation completed in {}ms", note.getId(), embeddingDuration);
                 observation.withTokensUsed(embeddingResult.getTokensUsed())
                            .withDuration(embeddingDuration);
+                
+                // Update status: Embedding completed
+                if (statusService != null && noteId != null) {
+                    statusService.updateStage(noteId, "embedding", "Embedding wygenerowany", 20);
+                }
                 
                 // Delegate storage to CampaignManager
                 boolean stored = campaignManager.addNoteToCampaign(note, campaign, embeddingResult.getEmbedding());
@@ -199,7 +232,21 @@ public class NoteService {
                 // Process artifacts after successful storage
                 try {
                     // Step 1: Extract artifacts and relationships (without saving)
+                    // Update status: NAE stage starting
+                    if (statusService != null && noteId != null) {
+                        statusService.updateStage(noteId, "nae", "Wydobywanie artefaktów...", 25);
+                    }
+                    
+                    LOGGER.info("[{}] Starting artifact extraction", note.getId());
+                    long extractStart = System.currentTimeMillis();
                     artifactResult = artifactService.extractArtifactsAndRelationships(note, campaign, trace);
+                    long extractDuration = System.currentTimeMillis() - extractStart;
+                    LOGGER.info("[{}] Artifact extraction completed in {}ms", note.getId(), extractDuration);
+                    
+                    // Update status: NAE completed
+                    if (statusService != null && noteId != null) {
+                        statusService.updateStage(noteId, "nae", "Artefakty wydobyte", 50);
+                    }
                     
                     if (!artifactResult.isSuccessful()) {
                         System.err.println("Artifact extraction failed: " + artifactResult.getErrorMessage());
@@ -212,6 +259,11 @@ public class NoteService {
                         // Step 2: Perform deduplication
                         trace.addEvent("deduplication_started");
                         
+                        // Update status: ARE stage starting
+                        if (statusService != null && noteId != null) {
+                            statusService.updateStage(noteId, "are", "Identyfikowanie relacji...", 55);
+                        }
+                        
                         DeduplicationResult artifactDedup = deduplicationCoordinator.processArtifacts(
                             artifactResult.getArtifacts(), note, campaign, 
                             campaign.getQuadrantCollectionName(), trace);
@@ -220,10 +272,20 @@ public class NoteService {
                             artifactResult.getRelationships(), note, campaign, 
                             campaign.getQuadrantCollectionName(), trace);
                         
+                        // Update status: ARE completed
+                        if (statusService != null && noteId != null) {
+                            statusService.updateStage(noteId, "are", "Relacje zidentyfikowane", 80);
+                        }
+                        
                         // Store deduplication results in artifact result
                         artifactResult.setDeduplicationResult(artifactDedup);
                         
                         // Step 3: Analyze decisions and create merge proposals
+                        // Update status: Deduplication stage starting
+                        if (statusService != null && noteId != null) {
+                            statusService.updateStage(noteId, "deduplication", "Sprawdzanie duplikatów...", 82);
+                        }
+                        
                         List<MergeProposal> proposals = new ArrayList<>();
                         boolean requiresUserConfirmation = false;
                         int autoMergedArtifacts = 0;
@@ -315,6 +377,11 @@ public class NoteService {
                             }
                         }
                         
+                        // Update status: Deduplication completed
+                        if (statusService != null && noteId != null) {
+                            statusService.updateStage(noteId, "deduplication", "Duplikaty przetworzone", 95);
+                        }
+                        
                         artifactResult.setMergeProposals(proposals);
                         
                         // Step 4: Decide on next action
@@ -333,6 +400,11 @@ public class NoteService {
                             
                         } else {
                             // All decisions are auto-merge or no duplicates found
+                            // Update status: Saving stage starting
+                            if (statusService != null && noteId != null) {
+                                statusService.updateStage(noteId, "saving", "Zapisywanie do bazy wiedzy...", 96);
+                            }
+                            
                             // Save new artifacts/relationships to Neo4j with embeddings
                             List<Artifact> newArtifacts = artifactDedup.getNewArtifacts();
                             List<Relationship> newRelationships = relationshipDedup.getNewRelationships();
@@ -394,6 +466,11 @@ public class NoteService {
                         trace.addEvent("deduplication_completed");
                     } else {
                         // No deduplication coordinator - use old workflow (backward compatibility)
+                        // Update status: Saving stage starting
+                        if (statusService != null && noteId != null) {
+                            statusService.updateStage(noteId, "saving", "Zapisywanie do bazy wiedzy...", 96);
+                        }
+                        
                         // Save with embeddings for consistency
                         artifactService.saveToNeo4j(
                             artifactResult.getArtifacts(), 
@@ -418,6 +495,8 @@ public class NoteService {
                 trace.setAttribute("total.duration_ms", totalDuration);
                 trace.setStatus(true, "Note added successfully");
                 
+                LOGGER.info("[{}] Note processing completed in {}ms", note.getId(), totalDuration);
+                
                 // Create successful response with artifact information
                 return createSuccessResponse(note, artifactResult);
             }
@@ -429,6 +508,20 @@ public class NoteService {
             return createErrorResponse(note.getId(), note.getTitle(), errorMessage);
         }
     }
+    
+    /**
+     * Adds a note to the specified campaign and returns detailed response.
+     * Convenience method that delegates to the full implementation without status tracking.
+     * Maintained for backwards compatibility.
+     * 
+     * @param note the note to add
+     * @param campaign the campaign to add the note to
+     * @return NoteCreateResponse with success status, note info, and artifact counts
+     */
+    public NoteCreateResponse addNoteWithResponse(Note note, Campain campaign) {
+        return addNoteWithResponse(note, campaign, null, null);
+    }
+
     
     /**
      * Creates an error response.
@@ -663,6 +756,56 @@ public class NoteService {
         } catch (Exception e) {
             System.err.println("Error reconstructing note from payload: " + e.getMessage());
             return null;
+        }
+    }
+    
+    /**
+     * Asynchronously processes note addition in background thread.
+     * 
+     * Updates processing status at each stage:
+     * - embedding (0-20%)
+     * - nae (20-50%)
+     * - are (50-80%)
+     * - deduplication (80-95%)
+     * - saving (95-100%)
+     * 
+     * Atomically sets completion result with deduplication information.
+     * 
+     * @param note the note to add
+     * @param campaign the campaign to add the note to
+     * @param statusService service for tracking status
+     * @return CompletableFuture with the processing result
+     */
+    @Async
+    public CompletableFuture<NoteCreateResponse> addNoteAsync(Note note, Campain campaign, 
+                                                              NoteProcessingStatusService statusService) {
+        String noteId = note.getId();
+        
+        try {
+            // Perform actual note addition with full workflow including progress tracking
+            NoteCreateResponse response = addNoteWithResponse(note, campaign, statusService, noteId);
+            
+            if (!response.isSuccess()) {
+                // Mark as failed - atomically update status with error message
+                statusService.setCompletionResult(noteId, null, false, response.getMessage());
+                
+                return CompletableFuture.failedFuture(
+                    new RuntimeException("Failed to add note: " + response.getMessage())
+                );
+            }
+            
+            // Atomically set completion with result (contains deduplication info)
+            statusService.setCompletionResult(noteId, response, true, null);
+            
+            return CompletableFuture.completedFuture(response);
+            
+        } catch (Exception e) {
+            LOGGER.error("[{}] Error during async note processing: {}", noteId, e.getMessage(), e);
+            
+            // Mark as failed - atomically update status with error message
+            statusService.setCompletionResult(noteId, null, false, e.getMessage());
+            
+            return CompletableFuture.failedFuture(e);
         }
     }
 } 
