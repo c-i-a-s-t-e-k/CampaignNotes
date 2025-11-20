@@ -172,9 +172,8 @@ public class NoteService {
         
         LOGGER.info("[{}] Note processing started", note.getId());
         
-        // Create trace for the entire note adding workflow
         try (OTelTrace trace = traceManager.createTrace(
-            "note-embedding",
+            "note-creation-workflow",
             campaign.getUuid(),
             note.getId(),
             null, // userId
@@ -182,6 +181,7 @@ public class NoteService {
         )) {
             trace.addEvent("embedding_started");
             
+            EmbeddingResult embeddingResult;
             // Create observation for embedding generation
             try (OTelEmbeddingObservation observation = 
                 new OTelEmbeddingObservation("embedding-generation", trace.getContext())) {
@@ -198,7 +198,7 @@ public class NoteService {
                 LOGGER.info("[{}] Starting embedding generation", note.getId());
                 long embeddingStart = System.currentTimeMillis();
                 String textForEmbedding = note.getFullTextForEmbedding();
-                EmbeddingResult embeddingResult = 
+                embeddingResult = 
                     embeddingService.generateEmbeddingWithUsage(textForEmbedding);
                 
                 long embeddingDuration = System.currentTimeMillis() - embeddingStart;
