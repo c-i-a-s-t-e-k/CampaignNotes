@@ -140,6 +140,7 @@ public class NoteService {
      * @param noteId optional note ID for status tracking
      * @return NoteCreateResponse with success status, note info, and artifact counts
      */
+    @org.springframework.cache.annotation.CacheEvict(value = "assistantQueryCache", allEntries = true)
     public NoteCreateResponse addNoteWithResponse(Note note, Campain campaign,
                                                   NoteProcessingStatusService statusService,
                                                   String noteId) {

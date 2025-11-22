@@ -2,7 +2,7 @@ import React from 'react';
 import { useUIStore } from '../stores';
 import CampaignList from '../components/CampaignList';
 import GraphCanvas from '../components/GraphCanvas';
-import SearchPanel from '../components/SearchPanel';
+import AssistantPanel from '../components/AssistantPanel';
 import NoteEditor from '../components/NoteEditor';
 import NoteDetailView from '../components/NoteDetailView';
 import ArtifactDetailsPanel from '../components/ArtifactDetailsPanel';
@@ -81,7 +81,7 @@ const MainLayout: React.FC = () => {
           </Button>
         </div>
 
-        {/* Right Panel - Search, Artifact Details & Note Detail */}
+        {/* Right Panel - Assistant, Artifact Details & Note Detail */}
         <div
           className={`border-l border-border transition-all duration-300 ${
             isSearchPanelOpen ? 'w-96' : 'w-0'
@@ -96,7 +96,7 @@ const MainLayout: React.FC = () => {
             ) : selectedArtifactId ? (
               <ArtifactDetailsPanel />
             ) : (
-              <SearchPanel />
+              <AssistantPanel />
             )}
           </div>
         </div>

@@ -5,3 +5,4 @@
 export * from './campaignStore';
 export * from './uiStore';
 export * from './graphSlice';
+export * from './assistantStore';

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { InteractiveNvlWrapper } from '@neo4j-nvl/react';
-import { useCampaignStore, useUIStore } from '../stores';
+import { useCampaignStore, useUIStore, useGraphStore } from '../stores';
 import { useGraphData } from '../hooks/useGraphData';
 import { useNeo4jGraph } from '../hooks/useNeo4jGraph';
 import { getArtifactNeighbors } from '../api/graph';
@@ -12,10 +12,12 @@ import { Graph, Node, Edge } from '../types';
 /**
  * Graph canvas component for visualizing campaign knowledge graph.
  * Uses Neo4j Visualization Library for interactive graph rendering.
+ * Supports both regular graph data and assistant-provided graph data.
  */
 const GraphCanvas: React.FC = () => {
   const { selectedCampaign } = useCampaignStore();
   const { setSelectedArtifactId, selectedNoteId } = useUIStore();
+  const { assistantGraphData } = useGraphStore();
   const nvlRef = useRef<any>(null);
   const lastClickRef = useRef<{ nodeId: string; timestamp: number } | null>(null);
   
@@ -23,10 +25,13 @@ const GraphCanvas: React.FC = () => {
   const [expandedNodes, setExpandedNodes] = useState<Node[]>([]);
   const [expandedEdges, setExpandedEdges] = useState<Edge[]>([]);
 
-  const { data: graph, isLoading, error } = useGraphData(
+  const { data: fetchedGraph, isLoading, error } = useGraphData(
     selectedCampaign?.uuid,
     selectedNoteId
   );
+  
+  // Use assistant graph data if available, otherwise use fetched graph
+  const graph = assistantGraphData || fetchedGraph;
 
   // Reset expansions when note changes
   useEffect(() => {

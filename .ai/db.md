@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS artifact_categories (
 - `events` - "Important occurrences, battles, ceremonies, and plot developments"
 
 #### Tabela `artifact_categories_to_campaigns`
-```sql
+```sqlartifact_categories
 CREATE TABLE IF NOT EXISTS artifact_categories_to_campaigns (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     campaign_uuid TEXT NOT NULL,
