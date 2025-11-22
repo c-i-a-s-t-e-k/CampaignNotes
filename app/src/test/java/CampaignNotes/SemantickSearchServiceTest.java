@@ -98,49 +98,49 @@ class SemantickSearchServiceTest {
         @DisplayName("Should throw IllegalArgumentException when query is null")
         void testGetTopKMatchWithNullQuery() {
             assertThrows(IllegalArgumentException.class, 
-                () -> searchService.getTopKMatch(null, 5, "campaign-uuid"));
+                () -> searchService.searchNotes(null, 5, "campaign-uuid"));
         }
         
         @Test
         @DisplayName("Should throw IllegalArgumentException when query is empty")
         void testGetTopKMatchWithEmptyQuery() {
             assertThrows(IllegalArgumentException.class, 
-                () -> searchService.getTopKMatch("", 5, "campaign-uuid"));
+                () -> searchService.searchNotes("", 5, "campaign-uuid"));
         }
         
         @Test
         @DisplayName("Should throw IllegalArgumentException when query is only whitespace")
         void testGetTopKMatchWithWhitespaceQuery() {
             assertThrows(IllegalArgumentException.class, 
-                () -> searchService.getTopKMatch("   ", 5, "campaign-uuid"));
+                () -> searchService.searchNotes("   ", 5, "campaign-uuid"));
         }
         
         @Test
         @DisplayName("Should throw IllegalArgumentException when k is zero")
         void testGetTopKMatchWithZeroK() {
             assertThrows(IllegalArgumentException.class, 
-                () -> searchService.getTopKMatch("test query", 0, "campaign-uuid"));
+                () -> searchService.searchNotes("test query", 0, "campaign-uuid"));
         }
         
         @Test
         @DisplayName("Should throw IllegalArgumentException when k is negative")
         void testGetTopKMatchWithNegativeK() {
             assertThrows(IllegalArgumentException.class, 
-                () -> searchService.getTopKMatch("test query", -5, "campaign-uuid"));
+                () -> searchService.searchNotes("test query", -5, "campaign-uuid"));
         }
         
         @Test
         @DisplayName("Should throw IllegalArgumentException when campaignUuid is null")
         void testGetTopKMatchWithNullCampaignUuid() {
             assertThrows(IllegalArgumentException.class, 
-                () -> searchService.getTopKMatch("test query", 5, null));
+                () -> searchService.searchNotes("test query", 5, null));
         }
         
         @Test
         @DisplayName("Should throw IllegalArgumentException when campaignUuid is empty")
         void testGetTopKMatchWithEmptyCampaignUuid() {
             assertThrows(IllegalArgumentException.class, 
-                () -> searchService.getTopKMatch("test query", 5, ""));
+                () -> searchService.searchNotes("test query", 5, ""));
         }
     }
     
@@ -154,7 +154,7 @@ class SemantickSearchServiceTest {
             when(mockSqliteRepository.getCampaignById("unknown-uuid")).thenReturn(null);
             
             assertThrows(IllegalArgumentException.class, 
-                () -> searchService.getTopKMatch("test query", 5, "unknown-uuid"));
+                () -> searchService.searchNotes("test query", 5, "unknown-uuid"));
         }
         
         @Test
@@ -163,7 +163,7 @@ class SemantickSearchServiceTest {
             Campain campaign = new Campain("uuid", "Test Campaign", "Label", null);
             when(mockSqliteRepository.getCampaignById("uuid")).thenReturn(campaign);
             
-            List<String> results = searchService.getTopKMatch("test query", 5, "uuid");
+            List<String> results = searchService.searchNotes("test query", 5, "uuid");
             
             assertTrue(results.isEmpty());
         }
@@ -194,7 +194,7 @@ class SemantickSearchServiceTest {
                 .thenReturn(Futures.immediateFuture(mockResults));
             
             // Execute search
-            List<String> results = searchService.getTopKMatch("test query", 3, "test-uuid");
+            List<String> results = searchService.searchNotes("test query", 3, "test-uuid");
             
             // Verify results
             assertEquals(3, results.size());
@@ -220,7 +220,7 @@ class SemantickSearchServiceTest {
                 .thenReturn(Futures.immediateFuture(Collections.emptyList()));
             
             // Execute search
-            List<String> results = searchService.getTopKMatch("test query", 5, "test-uuid");
+            List<String> results = searchService.searchNotes("test query", 5, "test-uuid");
             
             // Verify empty results
             assertTrue(results.isEmpty());
@@ -244,7 +244,7 @@ class SemantickSearchServiceTest {
                 .thenReturn(Futures.immediateFuture(mockResults));
             
             // Execute search with k > MAX_K (100)
-            List<String> results = searchService.getTopKMatch("test query", 200, "test-uuid");
+            List<String> results = searchService.searchNotes("test query", 200, "test-uuid");
             
             // Verify search was performed (with clamped k)
             verify(mockQdrantClient).searchAsync(any(SearchPoints.class));
@@ -272,7 +272,7 @@ class SemantickSearchServiceTest {
             when(mockQdrantRepository.getClient()).thenReturn(null);
             
             // Execute search
-            List<String> results = searchService.getTopKMatch("test query", 5, "test-uuid");
+            List<String> results = searchService.searchNotes("test query", 5, "test-uuid");
             
             // Verify empty results
             assertTrue(results.isEmpty());
@@ -296,7 +296,7 @@ class SemantickSearchServiceTest {
             when(mockQdrantClient.searchAsync(any(SearchPoints.class))).thenReturn(failedFuture);
             
             // Execute search
-            List<String> results = searchService.getTopKMatch("test query", 5, "test-uuid");
+            List<String> results = searchService.searchNotes("test query", 5, "test-uuid");
             
             // Verify empty results
             assertTrue(results.isEmpty());

@@ -357,7 +357,7 @@ public class ArtifactGraphService {
             }
             
             observation.withModel(modelUsed)
-                       .withPrompt(inputPrompt);
+                       .withPrompt(promptContent != null ? promptContent.asText() : inputPrompt);
             
             // Generate with retry
             LLMResponse response = llmService.generateWithRetry(modelUsed, systemPrompt, inputPrompt, 1);
@@ -430,7 +430,7 @@ public class ArtifactGraphService {
             }
 
             observation.withModel(modelUsed)
-                       .withPrompt(inputPrompt);
+                       .withPrompt(promptContent != null ? promptContent.asText() : inputPrompt);
 
             // Generate with retry
             LLMResponse response = llmService.generateWithRetry(modelUsed, systemPrompt, inputPrompt, 1);

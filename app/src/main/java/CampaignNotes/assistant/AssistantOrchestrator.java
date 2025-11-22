@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import CampaignNotes.CampaignManager;
 import CampaignNotes.dto.AssistantResponse;
 import CampaignNotes.dto.GraphDTO;
+import CampaignNotes.dto.assistant.ActionType;
 import CampaignNotes.dto.assistant.DataCollectionResult;
 import CampaignNotes.dto.assistant.PlanningResult;
 import CampaignNotes.tracking.otel.OTelTraceManager;
@@ -87,14 +88,14 @@ public class AssistantOrchestrator {
             
             PlanningResult plan = planningService.decideAction(campaign, query, trace);
             
-            trace.setAttribute("action.decided", plan.getAction());
+            trace.setAttribute("action.decided", plan.getAction().getValue());
             trace.setAttribute("action.reasoning", plan.getReasoning());
             trace.addEvent("planning_completed");
             
             LOGGER.info("[PHASE 1] Planning completed. Action: {}", plan.getAction());
             
             // PHASE 2: Handle special cases
-            if ("clarification_needed".equals(plan.getAction())) {
+            if (plan.getAction() == ActionType.CLARIFICATION_NEEDED) {
                 LOGGER.info("[PHASE 2] Clarification needed");
                 trace.setStatus(true, "Clarification requested");
                 
@@ -106,7 +107,7 @@ public class AssistantOrchestrator {
                 return AssistantResponse.clarificationNeeded(message);
             }
             
-            if ("out_of_scope".equals(plan.getAction())) {
+            if (plan.getAction() == ActionType.OUT_OF_SCOPE) {
                 LOGGER.info("[PHASE 2] Query out of scope");
                 trace.setStatus(true, "Out of scope");
                 return AssistantResponse.outOfScope();
@@ -125,7 +126,7 @@ public class AssistantOrchestrator {
             LOGGER.info("[PHASE 3] Data collection completed. Sources: {}", collectedData.getSourcesCount());
             
             // PHASE 4: Graph query (if needed)
-            if (requiresGraphQuery(plan.getAction())) {
+            if (plan.getAction().requiresGraphQuery()) {
                 LOGGER.info("[PHASE 4] Starting graph query phase");
                 trace.addEvent("graph_query_phase_started");
                 
@@ -188,26 +189,18 @@ public class AssistantOrchestrator {
     }
     
     /**
-     * Checks if the action requires a graph query.
-     */
-    private boolean requiresGraphQuery(String action) {
-        return "search_artifacts_then_graph".equals(action) ||
-               "search_relations_then_graph".equals(action);
-    }
-    
-    /**
      * Executes graph query phase with Cypher generation.
      */
     private GraphDTO executeGraphQuery(Campain campaign, String originalQuery,
                                       DataCollectionResult collectedData,
                                       PlanningResult plan, OTelTrace trace) {
         // Check if we have data to query
-        if ("search_artifacts_then_graph".equals(plan.getAction())) {
+        if (plan.getAction() == ActionType.SEARCH_ARTIFACTS_THEN_GRAPH) {
             if (collectedData.getFoundArtifactId() == null) {
                 LOGGER.warn("No artifact found, skipping graph query");
                 return new GraphDTO(); // Empty graph
             }
-        } else if ("search_relations_then_graph".equals(plan.getAction())) {
+        } else if (plan.getAction() == ActionType.SEARCH_RELATIONS_THEN_GRAPH) {
             if (collectedData.getFoundRelationshipId() == null) {
                 LOGGER.warn("No relationship found, skipping graph query");
                 return new GraphDTO(); // Empty graph

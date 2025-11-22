@@ -93,7 +93,7 @@ public class DeduplicationLLMService {
             }
             
             observation.withModel(DEDUP_MODEL)
-                       .withPrompt(inputPrompt);
+                       .withPrompt(promptContent != null ? promptContent.asText() : inputPrompt);
             
             // Call LLM
             LLMResponse response = llmService.generateWithRetry(DEDUP_MODEL, systemPrompt, inputPrompt, 1);
@@ -171,7 +171,7 @@ public class DeduplicationLLMService {
             }
             
             observation.withModel(DEDUP_MODEL)
-                       .withPrompt(inputPrompt);
+                       .withPrompt(promptContent != null ? promptContent.asText() : inputPrompt);
             
             // Call LLM
             LLMResponse response = llmService.generateWithRetry(DEDUP_MODEL, systemPrompt, inputPrompt, 1);

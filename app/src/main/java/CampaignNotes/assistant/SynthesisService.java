@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import CampaignNotes.dto.AssistantResponse;
 import CampaignNotes.dto.assistant.DataCollectionResult;
@@ -71,7 +73,7 @@ public class SynthesisService {
                 return AssistantResponse.text(
                     "Przepraszam, nie znalazłem żadnych informacji na ten temat w kampanii.",
                     collectedData.getSources(),
-                    List.of(plan.getAction())
+                    List.of(plan.getAction().getValue())
                 );
             }
             
@@ -98,7 +100,7 @@ public class SynthesisService {
             }
             
             observation.withModel(MODEL)
-                       .withPrompt(inputPrompt);
+                       .withPrompt(promptContent != null ? promptContent.asText() : inputPrompt);
             
             // Call LLM
             LOGGER.info("Calling LLM for response synthesis with model: {}", MODEL);
@@ -112,9 +114,12 @@ public class SynthesisService {
                 return AssistantResponse.text(
                     "Przepraszam, wystąpił błąd podczas generowania odpowiedzi.",
                     collectedData.getSources(),
-                    List.of(plan.getAction())
+                    List.of(plan.getAction().getValue())
                 );
             }
+            
+            // Parse the JSON response to extract the "response" field
+            String parsedResponse = parseSynthesisResponse(response.getContent());
             
             observation.withResponse(response.getContent())
                        .withTokenUsage(response.getInputTokens(), response.getOutputTokens(), response.getTokensUsed());
@@ -127,16 +132,16 @@ public class SynthesisService {
             // Build final response
             if (collectedData.getGraphData() != null) {
                 return AssistantResponse.textAndGraph(
-                    response.getContent(),
+                    parsedResponse,
                     collectedData.getGraphData(),
                     collectedData.getSources(),
-                    List.of(plan.getAction(), "synthesis")
+                    List.of(plan.getAction().getValue(), "synthesis")
                 );
             } else {
                 return AssistantResponse.text(
-                    response.getContent(),
+                    parsedResponse,
                     collectedData.getSources(),
-                    List.of(plan.getAction(), "synthesis")
+                    List.of(plan.getAction().getValue(), "synthesis")
                 );
             }
             
@@ -148,32 +153,50 @@ public class SynthesisService {
             return AssistantResponse.text(
                 "Przepraszam, wystąpił błąd podczas przetwarzania Twojego zapytania.",
                 collectedData.getSources(),
-                List.of(plan.getAction())
+                List.of(plan.getAction().getValue())
             );
         }
     }
     
     /**
-     * Builds prompt variables for synthesis.
+     * Builds prompt variables for synthesis with full content data.
      */
     private Map<String, Object> buildPromptVariables(Campain campaign, String originalQuery,
                                                      PlanningResult plan, DataCollectionResult collectedData) {
         Map<String, Object> variables = new HashMap<>();
         variables.put("originalQuery", originalQuery);
         variables.put("campaignName", campaign.getName());
-        variables.put("action", plan.getAction());
+        variables.put("action", plan.getAction().getValue());
         
-        // Format vector results
-        Map<String, Object> vectorResults = new HashMap<>();
-        if (collectedData.getFoundNoteIds() != null && !collectedData.getFoundNoteIds().isEmpty()) {
-            vectorResults.put("note_ids", collectedData.getFoundNoteIds());
-            vectorResults.put("sources", collectedData.getSources());
-        }
-        if (collectedData.getFoundArtifactId() != null) {
-            vectorResults.put("artifact_id", collectedData.getFoundArtifactId());
-            vectorResults.put("artifact_name", collectedData.getFoundArtifactName());
-        }
-        variables.put("vectorResults", gson.toJson(vectorResults));
+        // Format full note data with title and content
+        List<Map<String, String>> notesData = collectedData.getNotes().stream()
+            .map(note -> Map.of(
+                "title", note.getTitle(),
+                "content", note.getContent()
+            ))
+            .toList();
+        variables.put("vectorResults", gson.toJson(notesData).toString());
+        
+        // Format full artifact data
+        List<Map<String, String>> artifactsData = collectedData.getArtifacts().stream()
+            .map(artifact -> Map.of(
+                "name", artifact.getName(),
+                "type", artifact.getType(),
+                "description", artifact.getDescription() != null ? artifact.getDescription() : ""
+            ))
+            .toList();
+        variables.put("artifacts", gson.toJson(artifactsData).toString());
+        
+        // Format full relationship data
+        List<Map<String, String>> relationsData = collectedData.getRelationships().stream()
+            .map(rel -> Map.of(
+                "source", rel.getSourceArtifactName(),
+                "target", rel.getTargetArtifactName(),
+                "label", rel.getLabel(),
+                "description", rel.getDescription() != null ? rel.getDescription() : ""
+            ))
+            .toList();
+        variables.put("relationships", gson.toJson(relationsData).toString());
         
         // Format graph results
         if (collectedData.getGraphData() != null) {
@@ -186,7 +209,7 @@ public class SynthesisService {
                 graphResults.put("has_graph", true);
             }
             
-            variables.put("graphResults", gson.toJson(graphResults));
+            variables.put("graphResults", gson.toJson(graphResults).toString());
         } else {
             variables.put("graphResults", "{}");
         }
@@ -215,6 +238,52 @@ public class SynthesisService {
             "Zapytanie użytkownika: %s\n\nWygeneruj pomocną odpowiedź.",
             originalQuery
         );
+    }
+    
+    /**
+     * Parses the LLM response into the synthesis response string.
+     * Extracts the "response" field from JSON format.
+     * 
+     * @param response the LLM response content
+     * @return the extracted response string
+     */
+    private String parseSynthesisResponse(String response) {
+        try {
+            // Extract JSON from response
+            String jsonContent = extractJsonFromResponse(response);
+            JsonObject jsonObject = JsonParser.parseString(jsonContent).getAsJsonObject();
+            
+            // Extract response field
+            if (jsonObject.has("response")) {
+                return jsonObject.get("response").getAsString();
+            } else {
+                LOGGER.warn("Synthesis response missing 'response' field");
+                return response;
+            }
+            
+        } catch (Exception e) {
+            LOGGER.warn("Failed to parse synthesis response as JSON: {}. Using raw response.", e.getMessage());
+            return response;
+        }
+    }
+    
+    /**
+     * Extracts JSON from response text.
+     * Finds the first '{' and last '}' to extract JSON content.
+     * 
+     * @param response the response text that may contain JSON
+     * @return the extracted JSON string
+     * @throws RuntimeException if no valid JSON is found
+     */
+    private String extractJsonFromResponse(String response) {
+        int jsonStart = response.indexOf('{');
+        int jsonEnd = response.lastIndexOf('}') + 1;
+        
+        if (jsonStart != -1 && jsonEnd > jsonStart) {
+            return response.substring(jsonStart, jsonEnd);
+        }
+        
+        throw new RuntimeException("No valid JSON found in response");
     }
 }
 

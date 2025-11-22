@@ -15,7 +15,7 @@ import toast from 'react-hot-toast';
  */
 const AssistantPanel: React.FC = () => {
   const { selectedCampaign } = useCampaignStore();
-  const { currentQuery, setCurrentQuery, setResponse } = useAssistantStore();
+  const { currentQuery, currentResponse, setCurrentQuery, setResponse } = useAssistantStore();
   const { setGraphData } = useGraphStore();
   const [localQuery, setLocalQuery] = useState('');
 
@@ -126,8 +126,8 @@ const AssistantPanel: React.FC = () => {
         </Card>
       )}
 
-      {queryMutation.data && !queryMutation.isPending && (
-        <AssistantResponseComponent response={queryMutation.data} />
+      {currentResponse && !queryMutation.isPending && (
+        <AssistantResponseComponent response={currentResponse} />
       )}
     </div>
   );

@@ -6,6 +6,7 @@ import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
 import org.neo4j.driver.exceptions.ServiceUnavailableException;
+import org.springframework.stereotype.Repository;
 
 import io.github.cdimascio.dotenv.Dotenv;
 
@@ -13,6 +14,7 @@ import io.github.cdimascio.dotenv.Dotenv;
  * Repository responsible for managing the Neo4j driver lifecycle
  * and providing connectivity checks.
  */
+@Repository
 public class Neo4jRepository {
     private final Dotenv dotenv;
     private Driver neo4jDriver;

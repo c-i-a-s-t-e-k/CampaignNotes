@@ -9,13 +9,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import CampaignNotes.NoteService;
+import CampaignNotes.SemantickSearchService;
 import CampaignNotes.database.DatabaseConnectionManager;
-import CampaignNotes.dto.SourceReference;
 import CampaignNotes.dto.assistant.DataCollectionResult;
 import CampaignNotes.dto.assistant.PlanningResult;
 import CampaignNotes.tracking.otel.OTelTraceManager.OTelTrace;
+import model.Artifact;
 import model.Campain;
 import model.Note;
+import model.Relationship;
 
 /**
  * Service for collecting data from multiple sources based on planning decision.
@@ -26,17 +28,17 @@ public class DataCollectorService {
     
     private static final Logger LOGGER = LoggerFactory.getLogger(DataCollectorService.class);
     
-    private static final int DEFAULT_NOTES_LIMIT = 5;
+    private static final int DEFAULT_NOTES_LIMIT = 3;
     private static final int DEFAULT_ARTIFACTS_LIMIT = 3;
     
-    private final VectorSearchService vectorSearchService;
+    private final SemantickSearchService semantickSearchService;
     private final NoteService noteService;
     private final DatabaseConnectionManager dbConnectionManager;
     
-    public DataCollectorService(VectorSearchService vectorSearchService,
+    public DataCollectorService(SemantickSearchService semantickSearchService,
                                NoteService noteService,
                                DatabaseConnectionManager dbConnectionManager) {
-        this.vectorSearchService = vectorSearchService;
+        this.semantickSearchService = semantickSearchService;
         this.noteService = noteService;
         this.dbConnectionManager = dbConnectionManager;
     }
@@ -59,19 +61,19 @@ public class DataCollectorService {
         
         try {
             switch (plan.getAction()) {
-                case "search_notes":
+                case SEARCH_NOTES:
                     collectNotes(campaign, query, result, trace);
                     break;
                     
-                case "search_artifacts_then_graph":
+                case SEARCH_ARTIFACTS_THEN_GRAPH:
                     collectArtifacts(campaign, query, plan, result, trace);
                     break;
                     
-                case "search_relations_then_graph":
+                case SEARCH_RELATIONS_THEN_GRAPH:
                     collectRelations(campaign, query, plan, result, trace);
                     break;
                     
-                case "combined_search":
+                case COMBINED_SEARCH:
                     collectCombined(campaign, query, plan, result, trace);
                     break;
                     
@@ -106,13 +108,13 @@ public class DataCollectorService {
                              DataCollectionResult result, OTelTrace trace) {
         trace.addEvent("vector_search_notes_started");
         
-        List<String> noteIds = vectorSearchService.searchNotes(query, DEFAULT_NOTES_LIMIT, campaign.getUuid());
+        List<String> noteIds = semantickSearchService.searchNotes(query, DEFAULT_NOTES_LIMIT, campaign.getUuid());
         result.setFoundNoteIds(noteIds);
         
-        // Get full note objects to extract titles
-        List<SourceReference> sources = buildSourceReferences(noteIds, campaign);
-        result.setSources(sources);
-        result.setSourcesCount(sources.size());
+        // Get full note objects
+        List<Note> notes = buildNotes(noteIds, campaign);
+        result.setNotes(notes);
+        result.setSourcesCount(notes.size());
         
         trace.addEvent("vector_search_notes_completed");
         LOGGER.debug("Found {} notes", noteIds.size());
@@ -132,33 +134,26 @@ public class DataCollectorService {
             LOGGER.debug("Using custom artifact search query: {}", searchQuery);
         }
         
-        List<Map<String, Object>> artifacts = vectorSearchService.searchArtifacts(
+        List<Map<String, Object>> searchResults = semantickSearchService.searchArtifacts(
             searchQuery, DEFAULT_ARTIFACTS_LIMIT, campaign.getUuid());
         
-        if (!artifacts.isEmpty()) {
+        if (!searchResults.isEmpty()) {
             // Take the top result
-            Map<String, Object> topArtifact = artifacts.get(0);
-            result.setFoundArtifactId((String) topArtifact.get("artifact_id"));
-            result.setFoundArtifactName((String) topArtifact.get("name"));
-            result.setFoundArtifactType((String) topArtifact.get("artifact_type"));
+            Map<String, Object> topResult = searchResults.get(0);
+            Artifact artifact = buildArtifactFromPayload(topResult, campaign);
             
-            // Extract note IDs from artifact (if available)
-            if (topArtifact.containsKey("note_ids")) {
-                // Note: This would need proper parsing from Qdrant payload
-                LOGGER.debug("Artifact has associated note_ids");
-            }
-            
-            List<SourceReference> sources = new ArrayList<>();
-            // We'll build sources later after graph query
-            result.setSources(sources);
+            result.setFoundArtifactId(artifact.getId());
+            result.setFoundArtifactName(artifact.getName());
+            result.setFoundArtifactType(artifact.getType());
+            result.setArtifacts(List.of(artifact));
             result.setSourcesCount(1);
             
             LOGGER.info("Found artifact: {} (ID: {})", 
-                result.getFoundArtifactName(), result.getFoundArtifactId());
+                artifact.getName(), artifact.getId());
         } else {
             LOGGER.warn("No artifacts found for query: {}", searchQuery);
             result.setSourcesCount(0);
-            result.setSources(new ArrayList<>());
+            result.setArtifacts(new ArrayList<>());
         }
         
         trace.addEvent("vector_search_artifacts_completed");
@@ -177,22 +172,22 @@ public class DataCollectorService {
             searchQuery = plan.getParameters().get("relation_search_query").toString();
         }
         
-        List<Map<String, Object>> relations = vectorSearchService.searchRelations(
+        List<Map<String, Object>> searchResults = semantickSearchService.searchRelations(
             searchQuery, DEFAULT_ARTIFACTS_LIMIT, campaign.getUuid());
         
-        if (!relations.isEmpty()) {
-            Map<String, Object> topRelation = relations.get(0);
-            result.setFoundRelationshipId((String) topRelation.get("relationship_id"));
+        if (!searchResults.isEmpty()) {
+            Map<String, Object> topResult = searchResults.get(0);
+            Relationship relationship = buildRelationshipFromPayload(topResult, campaign);
             
-            List<SourceReference> sources = new ArrayList<>();
-            result.setSources(sources);
+            result.setFoundRelationshipId(relationship.getId());
+            result.setRelationships(List.of(relationship));
             result.setSourcesCount(1);
             
-            LOGGER.info("Found relation: {}", result.getFoundRelationshipId());
+            LOGGER.info("Found relation: {}", relationship.getId());
         } else {
             LOGGER.warn("No relations found for query: {}", searchQuery);
             result.setSourcesCount(0);
-            result.setSources(new ArrayList<>());
+            result.setRelationships(new ArrayList<>());
         }
         
         trace.addEvent("vector_search_relations_completed");
@@ -210,60 +205,97 @@ public class DataCollectorService {
         boolean searchArtifacts = params != null && Boolean.TRUE.equals(params.get("search_artifacts"));
         boolean searchRelations = params != null && Boolean.TRUE.equals(params.get("search_relations"));
         
-        List<SourceReference> allSources = new ArrayList<>();
+        List<Note> allNotes = new ArrayList<>();
+        List<Artifact> allArtifacts = new ArrayList<>();
+        List<Relationship> allRelationships = new ArrayList<>();
+        int totalSourcesCount = 0;
         
         if (searchNotes) {
-            List<String> noteIds = vectorSearchService.searchNotes(query, DEFAULT_NOTES_LIMIT, campaign.getUuid());
+            List<String> noteIds = semantickSearchService.searchNotes(query, DEFAULT_NOTES_LIMIT, campaign.getUuid());
             result.setFoundNoteIds(noteIds);
-            allSources.addAll(buildSourceReferences(noteIds, campaign));
+            List<Note> notes = buildNotes(noteIds, campaign);
+            allNotes.addAll(notes);
+            totalSourcesCount += notes.size();
         }
         
         if (searchArtifacts) {
-            List<Map<String, Object>> artifacts = vectorSearchService.searchArtifacts(
+            List<Map<String, Object>> searchResults = semantickSearchService.searchArtifacts(
                 query, DEFAULT_ARTIFACTS_LIMIT, campaign.getUuid());
-            if (!artifacts.isEmpty()) {
-                Map<String, Object> topArtifact = artifacts.get(0);
-                result.setFoundArtifactId((String) topArtifact.get("artifact_id"));
-                result.setFoundArtifactName((String) topArtifact.get("name"));
-                result.setFoundArtifactType((String) topArtifact.get("artifact_type"));
+            if (!searchResults.isEmpty()) {
+                Map<String, Object> topResult = searchResults.get(0);
+                Artifact artifact = buildArtifactFromPayload(topResult, campaign);
+                result.setFoundArtifactId(artifact.getId());
+                result.setFoundArtifactName(artifact.getName());
+                result.setFoundArtifactType(artifact.getType());
+                allArtifacts.add(artifact);
+                totalSourcesCount++;
             }
         }
         
         if (searchRelations) {
-            List<Map<String, Object>> relations = vectorSearchService.searchRelations(
+            List<Map<String, Object>> searchResults = semantickSearchService.searchRelations(
                 query, DEFAULT_ARTIFACTS_LIMIT, campaign.getUuid());
-            if (!relations.isEmpty()) {
-                Map<String, Object> topRelation = relations.get(0);
-                result.setFoundRelationshipId((String) topRelation.get("relationship_id"));
+            if (!searchResults.isEmpty()) {
+                Map<String, Object> topResult = searchResults.get(0);
+                Relationship relationship = buildRelationshipFromPayload(topResult, campaign);
+                result.setFoundRelationshipId(relationship.getId());
+                allRelationships.add(relationship);
+                totalSourcesCount++;
             }
         }
         
-        result.setSources(allSources);
-        result.setSourcesCount(allSources.size());
+        result.setNotes(allNotes);
+        result.setArtifacts(allArtifacts);
+        result.setRelationships(allRelationships);
+        result.setSourcesCount(totalSourcesCount);
         
         trace.addEvent("combined_search_completed");
-        LOGGER.info("Combined search found {} sources", allSources.size());
+        LOGGER.info("Combined search found {} sources", totalSourcesCount);
     }
     
     /**
      * Builds source references from note IDs.
      */
-    private List<SourceReference> buildSourceReferences(List<String> noteIds, Campain campaign) {
-        List<SourceReference> sources = new ArrayList<>();
+    private List<Note> buildNotes(List<String> noteIds, Campain campaign) {
+        String collectionName = campaign.getQuadrantCollectionName();
+        return noteService.getNotesByIds(noteIds, collectionName);
+    }
+    
+    /**
+     * Builds a full Artifact object from Qdrant search payload.
+     */
+    private Artifact buildArtifactFromPayload(Map<String, Object> payload, Campain campaign) {
+        String artifactId = (String) payload.get("artifact_id");
+        String name = (String) payload.get("name");
+        String artifactType = (String) payload.get("artifact_type");
+        String description = (String) payload.getOrDefault("description", "");
         
-        try {
-            String collectionName = campaign.getQuadrantCollectionName();
-            List<Note> notes = noteService.getNotesByIds(noteIds, collectionName);
-            
-            for (Note note : notes) {
-                sources.add(new SourceReference(note.getId(), note.getTitle()));
-            }
-            
-        } catch (Exception e) {
-            LOGGER.error("Error building source references: {}", e.getMessage(), e);
+        Artifact artifact = new Artifact(name, artifactType, campaign.getUuid(), (String) null, description);
+        if (artifactId != null) {
+            artifact.setId(artifactId);
         }
         
-        return sources;
+        return artifact;
+    }
+    
+    /**
+     * Builds a full Relationship object from Qdrant search payload.
+     */
+    private Relationship buildRelationshipFromPayload(Map<String, Object> payload, Campain campaign) {
+        String relationshipId = (String) payload.get("relationship_id");
+        String sourceArtifactName = (String) payload.get("source_artifact_name");
+        String targetArtifactName = (String) payload.get("target_artifact_name");
+        String label = (String) payload.getOrDefault("label", "");
+        String description = (String) payload.getOrDefault("description", "");
+        String reasoning = (String) payload.getOrDefault("reasoning", "");
+        
+        Relationship relationship = new Relationship(sourceArtifactName, targetArtifactName, label, 
+                                                     description, reasoning, (String) null, campaign.getUuid());
+        if (relationshipId != null) {
+            relationship.setId(relationshipId);
+        }
+        
+        return relationship;
     }
 }
 

@@ -12,6 +12,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import CampaignNotes.ArtifactCategoryService;
+import CampaignNotes.dto.assistant.ActionType;
 import CampaignNotes.dto.assistant.PlanningResult;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.LangfuseClient;
@@ -82,7 +83,7 @@ public class PlanningService {
             String inputPrompt = messages.size() > 1 ? messages.get(1).getContent() : "";
             
             observation.withModel(MODEL)
-                       .withPrompt(inputPrompt);
+                       .withPrompt(promptContent.asText());
             
             // Call LLM
             LOGGER.info("Calling LLM for planning decision with model: {}", MODEL);
@@ -102,7 +103,7 @@ public class PlanningService {
             
             observation.setSuccess();
             trace.addEvent("planning_completed");
-            trace.setAttribute("planning.action", result.getAction());
+            trace.setAttribute("planning.action", result.getAction().getValue());
             trace.setAttribute("planning.reasoning", result.getReasoning());
             
             LOGGER.info("Planning decision: action={}, reasoning={}", result.getAction(), result.getReasoning());
@@ -145,10 +146,11 @@ public class PlanningService {
             
             // Extract action
             if (jsonObject.has("action")) {
-                result.setAction(jsonObject.get("action").getAsString());
+                String actionString = jsonObject.get("action").getAsString();
+                result.setAction(actionString); // Uses setAction(String) which converts to enum
             } else {
                 LOGGER.warn("Planning response missing 'action' field, defaulting to search_notes");
-                result.setAction("search_notes");
+                result.setAction(ActionType.SEARCH_NOTES);
             }
             
             // Extract reasoning
@@ -195,7 +197,7 @@ public class PlanningService {
      */
     private PlanningResult buildFallbackPlanningResult(String query) {
         PlanningResult result = new PlanningResult();
-        result.setAction("search_notes");
+        result.setAction(ActionType.SEARCH_NOTES);
         result.setReasoning("Fallback: defaulting to search_notes due to planning error");
         result.setParameters(new HashMap<>());
         

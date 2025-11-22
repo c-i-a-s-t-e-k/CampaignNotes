@@ -33,6 +33,7 @@ import io.opentelemetry.context.Context;
  * }
  * </pre>
  */
+@Component
 public class OTelTraceManager {
     
     private static OTelTraceManager instance;

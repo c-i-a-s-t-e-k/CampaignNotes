@@ -89,7 +89,7 @@ public class CypherGenerationService {
             }
             
             observation.withModel(MODEL)
-                       .withPrompt(inputPrompt);
+                       .withPrompt(promptContent != null ? promptContent.asText() : inputPrompt);
             
             // Call LLM
             LOGGER.info("Calling LLM for Cypher generation with model: {}", MODEL);
@@ -163,10 +163,7 @@ public class CypherGenerationService {
         variables.put("scope", scope);
         
         // Additional instructions
-        String additionalInstructions = "";
-        if (plan.getParameters() != null && plan.getParameters().containsKey("artifact_search_query")) {
-            additionalInstructions = "Focus on: " + plan.getParameters().get("artifact_search_query");
-        }
+        String additionalInstructions = plan.getParameters().get("additionalInstructions").toString();
         variables.put("additionalInstructions", additionalInstructions);
         
         return variables;

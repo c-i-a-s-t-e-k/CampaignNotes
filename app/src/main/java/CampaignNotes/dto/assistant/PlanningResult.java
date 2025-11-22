@@ -3,17 +3,26 @@ package CampaignNotes.dto.assistant;
 import java.util.Map;
 
 public class PlanningResult {
-    private String action;
+    private ActionType action;
     private String reasoning;
     private Map<String, Object> parameters;
 
     // Getters and setters
-    public String getAction() {
+    public ActionType getAction() {
         return action;
     }
 
-    public void setAction(String action) {
+    public void setAction(ActionType action) {
         this.action = action;
+    }
+    
+    /**
+     * Sets action from string value (for backward compatibility with LLM responses).
+     * 
+     * @param actionString the string value of the action
+     */
+    public void setAction(String actionString) {
+        this.action = ActionType.fromString(actionString);
     }
 
     public String getReasoning() {
