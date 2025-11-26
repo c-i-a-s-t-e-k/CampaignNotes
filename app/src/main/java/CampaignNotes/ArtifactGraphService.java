@@ -12,8 +12,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import CampaignNotes.config.DeduplicationConfig;
+import CampaignNotes.config.LLMConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.database.Neo4jRepository;
+import CampaignNotes.llm.LLMService;
 import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.LangfuseClient;
 import CampaignNotes.tracking.otel.OTelGenerationObservation;
@@ -33,26 +35,23 @@ import model.Relationship;
  */
 public class ArtifactGraphService {
     
-    private final OpenAILLMService llmService;
+    private final LLMService llmService;
     private final LangfuseClient langfuseClient;
     private final OTelTraceManager traceManager;
     private final ArtifactCategoryService categoryService;
     private final DatabaseConnectionManager dbConnectionManager;
     private final GraphEmbeddingService graphEmbeddingService;
     private final DeduplicationConfig deduplicationConfig;
+    private final LLMConfig llmConfig;
     private final Gson gson;
     
     // Timeout for the entire workflow (10 minute as per PRD)
     private static final long WORKFLOW_TIMEOUT_MS = 600000;
     
-    // LLM models used for different stages of artifact processing
-    private static final String ARTIFACT_EXTRACTION_MODEL = "o3-mini";
-    private static final String RELATIONSHIP_EXTRACTION_MODEL = "o3-mini";
-    
     /**
      * Constructor with OpenTelemetry tracking.
      * 
-     * @deprecated Use {@link #ArtifactGraphService(OpenAILLMService, ArtifactCategoryService, DatabaseConnectionManager)} instead
+     * @deprecated Use {@link #ArtifactGraphService(LLMService, ArtifactCategoryService, DatabaseConnectionManager, GraphEmbeddingService, DeduplicationConfig, LLMConfig)} instead
      */
     @Deprecated
     public ArtifactGraphService() {
@@ -66,6 +65,7 @@ public class ArtifactGraphService {
             dbConnectionManager);
         io.github.cdimascio.dotenv.Dotenv dotenv = io.github.cdimascio.dotenv.Dotenv.configure().ignoreIfMissing().load();
         this.deduplicationConfig = new CampaignNotes.config.DeduplicationConfig(dotenv);
+        this.llmConfig = new CampaignNotes.config.LLMConfig();
         this.gson = new Gson();
     }
     
@@ -77,12 +77,14 @@ public class ArtifactGraphService {
      * @param dbConnectionManager the database connection manager to use
      * @param graphEmbeddingService the graph embedding service for deduplication
      * @param deduplicationConfig the deduplication configuration
+     * @param llmConfig the LLM configuration containing model names
      */
-    public ArtifactGraphService(OpenAILLMService llmService, 
+    public ArtifactGraphService(LLMService llmService, 
                                ArtifactCategoryService categoryService, 
                                DatabaseConnectionManager dbConnectionManager,
                                GraphEmbeddingService graphEmbeddingService,
-                               DeduplicationConfig deduplicationConfig) {
+                               DeduplicationConfig deduplicationConfig,
+                               LLMConfig llmConfig) {
         this.llmService = llmService;
         this.langfuseClient = LangfuseClient.getInstance();
         this.traceManager = OTelTraceManager.getInstance();
@@ -90,6 +92,7 @@ public class ArtifactGraphService {
         this.dbConnectionManager = dbConnectionManager;
         this.graphEmbeddingService = graphEmbeddingService;
         this.deduplicationConfig = deduplicationConfig;
+        this.llmConfig = llmConfig;
         this.gson = new Gson();
     }
     
@@ -322,7 +325,7 @@ public class ArtifactGraphService {
      */
     private List<Artifact> extractArtifacts(String noteContent, Map<String, String> categories, 
                                            Note note, Campain campaign, OTelTrace trace) {
-        String modelUsed = ARTIFACT_EXTRACTION_MODEL;
+        String modelUsed = llmConfig.getArtifactExtractionModel();
         List<Artifact> artifacts = new ArrayList<>();
         
         // Create observation for NAE (Note Artifact Extraction)
@@ -397,7 +400,7 @@ public class ArtifactGraphService {
     private List<Relationship> extractRelationships(String noteContent, List<Artifact> artifacts, 
                                                    Note note, Campain campaign, OTelTrace trace) {
         List<Relationship> relationships = new ArrayList<>();
-        String modelUsed = RELATIONSHIP_EXTRACTION_MODEL;
+        String modelUsed = llmConfig.getRelationshipExtractionModel();
         
         // Create observation for ARE (Artifact Relationship Extraction)
         try (OTelGenerationObservation observation = 
