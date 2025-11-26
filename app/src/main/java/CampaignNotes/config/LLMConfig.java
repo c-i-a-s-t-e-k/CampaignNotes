@@ -29,9 +29,9 @@ public class LLMConfig {
     private static final String EMBEDDING_MODEL = "text-embedding-3-large";
     
     // Application-specific model assignments
-    private static final String ARTIFACT_EXTRACTION_MODEL = OPENAI_O3_MINI;
-    private static final String RELATIONSHIP_EXTRACTION_MODEL = OPENAI_O3_MINI;
-    private static final String DEDUP_MODEL = OPENAI_GPT_3_5_TURBO;
+    private static final String ARTIFACT_EXTRACTION_MODEL = QWEN3_THINKING;
+    private static final String RELATIONSHIP_EXTRACTION_MODEL = QWEN3_THINKING;
+    private static final String DEDUP_MODEL = QWEN3;
     
     /**
      * Gets the embedding model name.
