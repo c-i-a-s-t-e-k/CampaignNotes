@@ -9,9 +9,10 @@ import java.util.stream.Collectors;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import CampaignNotes.config.LLMConfig;
 import CampaignNotes.dto.deduplication.ArtifactCandidate;
 import CampaignNotes.dto.deduplication.RelationshipCandidate;
-import CampaignNotes.llm.OpenAILLMService;
+import CampaignNotes.llm.LLMService;
 import CampaignNotes.tracking.LangfuseClient;
 import CampaignNotes.tracking.otel.OTelGenerationObservation;
 import CampaignNotes.tracking.otel.OTelTraceManager.OTelTrace;
@@ -29,22 +30,24 @@ import model.Relationship;
  */
 public class DeduplicationLLMService {
     
-    private final OpenAILLMService llmService;
+    private final LLMService llmService;
     private final LangfuseClient langfuseClient;
+    private final LLMConfig llmConfig;
     
-    private static final String DEDUP_MODEL = "gpt-3.5-turbo";
     private static final String ARTIFACT_DEDUP_PROMPT_NAME = "ArtifactDeduplicationReasoning";
     private static final String RELATIONSHIP_DEDUP_PROMPT_NAME = "RelationshipDeduplicationReasoning";
     
     /**
      * Constructor with dependency injection.
      * 
-     * @param llmService the OpenAI LLM service
+     * @param llmService the LLM service
      * @param langfuseClient the Langfuse client for prompt management
+     * @param llmConfig the LLM configuration containing model names
      */
-    public DeduplicationLLMService(OpenAILLMService llmService, LangfuseClient langfuseClient) {
+    public DeduplicationLLMService(LLMService llmService, LangfuseClient langfuseClient, LLMConfig llmConfig) {
         this.llmService = llmService;
         this.langfuseClient = langfuseClient;
+        this.llmConfig = llmConfig;
     }
     
     /**
@@ -92,11 +95,12 @@ public class DeduplicationLLMService {
                 inputPrompt = buildArtifactDeduplicationInput(newArtifact, candidate, sourceNote);
             }
             
-            observation.withModel(DEDUP_MODEL)
+            String dedupModel = llmConfig.getDedupModel();
+            observation.withModel(dedupModel)
                        .withPrompt(inputPrompt);
             
             // Call LLM
-            LLMResponse response = llmService.generateWithRetry(DEDUP_MODEL, systemPrompt, inputPrompt, 1);
+            LLMResponse response = llmService.generateWithRetry(dedupModel, systemPrompt, inputPrompt, 1);
             
             if (!response.isSuccessful()) {
                 System.err.println("LLM deduplication analysis failed: " + response.getErrorMessage());
@@ -170,11 +174,12 @@ public class DeduplicationLLMService {
                 inputPrompt = buildRelationshipDeduplicationInput(newRelationship, candidate, sourceNote);
             }
             
-            observation.withModel(DEDUP_MODEL)
+            String dedupModel = llmConfig.getDedupModel();
+            observation.withModel(dedupModel)
                        .withPrompt(inputPrompt);
             
             // Call LLM
-            LLMResponse response = llmService.generateWithRetry(DEDUP_MODEL, systemPrompt, inputPrompt, 1);
+            LLMResponse response = llmService.generateWithRetry(dedupModel, systemPrompt, inputPrompt, 1);
             
             if (!response.isSuccessful()) {
                 System.err.println("LLM relationship dedup analysis failed: " + response.getErrorMessage());

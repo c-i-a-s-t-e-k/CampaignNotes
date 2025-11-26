@@ -24,7 +24,7 @@ import model.LLMResponse;
  * Currently uses HTTP calls but has SDK client prepared for future migration.
  * Provides functionality to generate responses using o3-mini model.
  */
-public class OpenAILLMService {
+public class OpenAILLMService implements LLMService{
     
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenAILLMService.class);
     

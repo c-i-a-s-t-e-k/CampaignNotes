@@ -6,10 +6,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Lazy;
 
 import CampaignNotes.config.DeduplicationConfig;
+import CampaignNotes.config.LLMConfig;
 import CampaignNotes.database.DatabaseConnectionManager;
 import CampaignNotes.deduplication.DeduplicationCoordinator;
+import CampaignNotes.llm.LLMService;
 import CampaignNotes.llm.OpenAIEmbeddingService;
-import CampaignNotes.llm.OpenAILLMService;
 import CampaignNotes.tracking.otel.OpenTelemetryConfig;
 import io.github.cdimascio.dotenv.Dotenv;
 
@@ -35,21 +36,7 @@ public class Application {
         return new DatabaseConnectionManager();
     }
     
-    /**
-     * Bean for OpenAIEmbeddingService.
-     */
-    @Bean
-    public OpenAIEmbeddingService embeddingService() {
-        return new OpenAIEmbeddingService();
-    }
-    
-    /**
-     * Bean for OpenAILLMService.
-     */
-    @Bean
-    public OpenAILLMService llmService() {
-        return new OpenAILLMService();
-    }
+    // LLM and embedding services are now configured in LLMConfig
     
     /**
      * Bean for CampaignManager.
@@ -89,13 +76,14 @@ public class Application {
      * Bean for ArtifactGraphService.
      */
     @Bean
-    public ArtifactGraphService artifactGraphService(OpenAILLMService llmService, 
+    public ArtifactGraphService artifactGraphService(LLMService llmService, 
                                                      ArtifactCategoryService categoryService,
                                                      DatabaseConnectionManager dbConnectionManager,
                                                      GraphEmbeddingService graphEmbeddingService,
-                                                     DeduplicationConfig deduplicationConfig) {
+                                                     DeduplicationConfig deduplicationConfig,
+                                                     LLMConfig llmConfig) {
         return new ArtifactGraphService(llmService, categoryService, dbConnectionManager,
-                                       graphEmbeddingService, deduplicationConfig);
+                                       graphEmbeddingService, deduplicationConfig, llmConfig);
     }
     
     /**
@@ -136,9 +124,10 @@ public class Application {
      */
     @Bean
     public CampaignNotes.deduplication.DeduplicationLLMService deduplicationLLMService(
-            OpenAILLMService llmService,
-            CampaignNotes.tracking.LangfuseClient langfuseClient) {
-        return new CampaignNotes.deduplication.DeduplicationLLMService(llmService, langfuseClient);
+            LLMService llmService,
+            CampaignNotes.tracking.LangfuseClient langfuseClient,
+            LLMConfig llmConfig) {
+        return new CampaignNotes.deduplication.DeduplicationLLMService(llmService, langfuseClient, llmConfig);
     }
     
     /**
