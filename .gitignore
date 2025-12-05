@@ -58,3 +58,6 @@ basesDashbordsURL.txt
 #tmp files
 tmp/
 .ai/tmp/
+
+# Python virtual environments for migration
+venv_migration/
