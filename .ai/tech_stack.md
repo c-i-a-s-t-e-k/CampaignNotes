@@ -1,4 +1,4 @@
-# Technology Stack - CampaignNotes
+ # Technology Stack - CampaignNotes
 
 ## Struktura Katalogu Projektu:
 ```
@@ -31,6 +31,7 @@ Projekt wykorzystuje architekturę trzech baz danych:
 - **TypeScript** can be added for static typing and improved developer experience (assuming it might be added later or is desired).
 
 ## Backend - Java Application with Gradle:
+- Backend jest realizowany przy pomocy **Spring Boot 3.2.1**.
 - Built using **Java 21**, leveraging the JVM ecosystem.
 - Managed by **Gradle 7.2** for dependency management and build automation.
 - Utilizes **JUnit 5 (5.11.4)** for unit testing with modern testing capabilities
@@ -43,9 +44,6 @@ Projekt wykorzystuje architekturę trzech baz danych:
 - **Langfuse** for monitoring, prompt management, and evaluation:
     - Tracks AI call performance and costs.
     - Facilitates prompt development and optimization.
-- **Promptfoo** for systematic prompt testing and evaluation:
-    - Enables setting up test cases for prompts.
-    - Helps ensure prompt quality and identify regressions.
 
 ## CI/CD and Hosting (Placeholder):
 - **GitHub Actions** for Continuous Integration and Continuous Deployment pipelines (Common choice).

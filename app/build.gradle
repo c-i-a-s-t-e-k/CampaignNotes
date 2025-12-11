@@ -39,6 +39,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     
+    // SpringDoc OpenAPI - REST API documentation
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+    
     // This dependency is used by the application.
     implementation 'com.google.guava:guava:33.4.8-jre'
     

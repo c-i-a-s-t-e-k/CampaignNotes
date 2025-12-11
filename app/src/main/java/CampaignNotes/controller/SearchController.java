@@ -143,10 +143,10 @@ public class SearchController {
         }
         
         try {
-            // Perform semantic search with type filter for artifacts (top 3)
+            
             List<String> artifactIds = searchService.getTopKMatch(
                 request.getQuery(), 
-                3,  // Top 3 results
+                request.getLimit() + 1, 
                 campaignUuid,
                 "artifact"
             );
@@ -215,7 +215,7 @@ public class SearchController {
             // Perform semantic search with type filter for relations (top 3)
             List<String> relationIds = searchService.getTopKMatch(
                 request.getQuery(), 
-                3,  // Top 3 results
+                request.getLimit(), 
                 campaignUuid,
                 "relation"
             );
