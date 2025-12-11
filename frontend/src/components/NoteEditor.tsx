@@ -63,6 +63,7 @@ const NoteEditor: React.FC = () => {
         setConfirmDialogData(data);
       }
       queryClient.invalidateQueries({ queryKey: ['graph', selectedCampaign?.uuid] });
+      queryClient.invalidateQueries({ queryKey: ['allNotes', selectedCampaign?.uuid] });
       reset();
     },
     onError: (error: any) => {
@@ -78,6 +79,10 @@ const NoteEditor: React.FC = () => {
       setProcessingNoteId(null);
       const result = processingStatus.result;
       
+      // Invalidate queries when note processing is completed
+      queryClient.invalidateQueries({ queryKey: ['graph', selectedCampaign?.uuid] });
+      queryClient.invalidateQueries({ queryKey: ['allNotes', selectedCampaign?.uuid] });
+      
       if (result.requiresUserConfirmation || (result.artifactMergeProposals && result.artifactMergeProposals.length > 0)) {
         // Show DeduplicationModal
         setDeduplicationModalData(result);
@@ -90,13 +95,14 @@ const NoteEditor: React.FC = () => {
       setProcessingNoteId(null);
       toast.error(processingStatus.errorMessage || 'Note processing failed');
     }
-  }, [processingStatus?.status, processingStatus?.result, processingStatus?.errorMessage]);
+  }, [processingStatus?.status, processingStatus?.result, processingStatus?.errorMessage, selectedCampaign?.uuid, queryClient]);
 
   // Handle deduplication confirmation
   const handleDeduplicationConfirmed = (finalData: NoteCreateResponse) => {
     setDeduplicationModalData(null);
     setConfirmDialogData(finalData);
     queryClient.invalidateQueries({ queryKey: ['graph', selectedCampaign?.uuid] });
+    queryClient.invalidateQueries({ queryKey: ['allNotes', selectedCampaign?.uuid] });
   };
 
   // Handle deduplication cancellation

@@ -760,6 +760,191 @@ public class NoteService {
     }
     
     /**
+     * Retrieves all notes for a specific campaign with pagination support.
+     * Queries Qdrant directly using scroll API with type=note filter.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param collectionName Qdrant collection name
+     * @param limit Maximum number of notes to return
+     * @param offset Offset for pagination
+     * @return List of Note objects in reverse chronological order
+     */
+    public List<Note> getAllCampaignNotes(String campaignUuid, String collectionName, int limit, int offset) {
+        if (campaignUuid == null || campaignUuid.trim().isEmpty()) {
+            System.err.println("Campaign UUID cannot be null or empty");
+            return new ArrayList<>();
+        }
+        
+        if (collectionName == null || collectionName.trim().isEmpty()) {
+            System.err.println("Collection name cannot be null or empty");
+            return new ArrayList<>();
+        }
+        
+        try {
+            QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
+            if (qdrantClient == null) {
+                System.err.println("Qdrant client not available");
+                return new ArrayList<>();
+            }
+            
+            // Build filter for note type only
+            io.qdrant.client.grpc.Points.Filter filter = io.qdrant.client.grpc.Points.Filter.newBuilder()
+                    .addMust(io.qdrant.client.ConditionFactory.matchKeyword("type", "note"))
+                    .build();
+            
+            // Use scroll to get all notes with pagination
+            // We need to scroll through all notes up to offset+limit and then return the subset
+            List<Note> allNotes = new ArrayList<>();
+            io.qdrant.client.grpc.Points.PointId lastPointId = null;
+            int totalToFetch = offset + limit;
+            
+            while (allNotes.size() < totalToFetch) {
+                var scrollRequestBuilder = io.qdrant.client.grpc.Points.ScrollPoints.newBuilder()
+                        .setCollectionName(collectionName)
+                        .setFilter(filter)
+                        .setLimit(Math.min(100, totalToFetch - allNotes.size())) // Batch size of 100
+                        .setWithPayload(io.qdrant.client.WithPayloadSelectorFactory.enable(true));
+                
+                if (lastPointId != null) {
+                    scrollRequestBuilder.setOffset(lastPointId);
+                }
+                
+                var scrollResult = qdrantClient.scrollAsync(scrollRequestBuilder.build()).get();
+                var points = scrollResult.getResultList();
+                
+                if (points.isEmpty()) {
+                    break; // No more points
+                }
+                
+                for (var point : points) {
+                    Note note = reconstructNoteFromRetrievedPoint(point);
+                    if (note != null) {
+                        allNotes.add(note);
+                    }
+                }
+                
+                // Get the last point ID for next scroll iteration
+                if (!points.isEmpty()) {
+                    lastPointId = points.get(points.size() - 1).getId();
+                }
+                
+                // Check if there are more results
+                if (!scrollResult.hasNextPageOffset()) {
+                    break;
+                }
+            }
+            
+            // Sort by created_at descending (newest first)
+            allNotes.sort((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()));
+            
+            // Apply offset and limit
+            int fromIndex = Math.min(offset, allNotes.size());
+            int toIndex = Math.min(offset + limit, allNotes.size());
+            List<Note> paginatedNotes = allNotes.subList(fromIndex, toIndex);
+            
+            LOGGER.info("Retrieved {} notes for campaign: {} (offset: {}, limit: {})", 
+                       paginatedNotes.size(), campaignUuid, offset, limit);
+            return new ArrayList<>(paginatedNotes);
+            
+        } catch (Exception e) {
+            LOGGER.error("Error retrieving all campaign notes from Qdrant: {}", e.getMessage(), e);
+            return new ArrayList<>();
+        }
+    }
+    
+    /**
+     * Counts total number of notes for a specific campaign in Qdrant.
+     * 
+     * @param collectionName Qdrant collection name
+     * @return Total count of notes in the collection
+     */
+    public int countNotesInQdrant(String collectionName) {
+        if (collectionName == null || collectionName.trim().isEmpty()) {
+            return 0;
+        }
+        
+        try {
+            QdrantClient qdrantClient = dbConnectionManager.getQdrantRepository().getClient();
+            if (qdrantClient == null) {
+                System.err.println("Qdrant client not available");
+                return 0;
+            }
+            
+            // Build filter for note type only
+            io.qdrant.client.grpc.Points.Filter filter = io.qdrant.client.grpc.Points.Filter.newBuilder()
+                    .addMust(io.qdrant.client.ConditionFactory.matchKeyword("type", "note"))
+                    .build();
+            
+            // Count points with the filter
+            Long countResult = qdrantClient.countAsync(collectionName, filter, true).get();
+            return countResult.intValue();
+            
+        } catch (Exception e) {
+            LOGGER.error("Error counting notes in Qdrant: {}", e.getMessage(), e);
+            return 0;
+        }
+    }
+    
+    /**
+     * Reconstructs a Note from a RetrievedPoint (scroll result).
+     */
+    private Note reconstructNoteFromRetrievedPoint(io.qdrant.client.grpc.Points.RetrievedPoint point) {
+        try {
+            var payload = point.getPayloadMap();
+            
+            if (!payload.containsKey("note_id") || !payload.containsKey("title") || 
+                !payload.containsKey("content") || !payload.containsKey("campaign_uuid")) {
+                return null;
+            }
+            
+            String campaignUuid = payload.get("campaign_uuid").getStringValue();
+            String title = payload.get("title").getStringValue();
+            String content = payload.get("content").getStringValue();
+            
+            Note note = new Note(campaignUuid, title, content);
+            note.setId(payload.get("note_id").getStringValue());
+            
+            if (payload.containsKey("created_at")) {
+                try {
+                    java.time.LocalDateTime createdAt = java.time.LocalDateTime.parse(
+                        payload.get("created_at").getStringValue());
+                    note.setCreatedAt(createdAt);
+                } catch (Exception e) {
+                    // Keep default timestamp
+                }
+            }
+            
+            if (payload.containsKey("updated_at")) {
+                try {
+                    java.time.LocalDateTime updatedAt = java.time.LocalDateTime.parse(
+                        payload.get("updated_at").getStringValue());
+                    note.setUpdatedAt(updatedAt);
+                } catch (Exception e) {
+                    // Keep default timestamp
+                }
+            }
+            
+            if (payload.containsKey("is_override")) {
+                note.setOverride(payload.get("is_override").getBoolValue());
+            }
+            
+            if (payload.containsKey("is_overridden")) {
+                note.setOverridden(payload.get("is_overridden").getBoolValue());
+            }
+            
+            if (payload.containsKey("override_reason")) {
+                note.setOverrideReason(payload.get("override_reason").getStringValue());
+            }
+            
+            return note;
+            
+        } catch (Exception e) {
+            System.err.println("Error reconstructing note from scroll result: " + e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
      * Asynchronously processes note addition in background thread.
      * 
      * Updates processing status at each stage:

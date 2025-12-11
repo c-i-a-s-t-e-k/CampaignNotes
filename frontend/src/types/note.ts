@@ -99,3 +99,11 @@ export interface NoteProcessingStatus {
   startedAt: string;
   completedAt?: string;
 }
+
+export interface NoteListResponse {
+  notes: Note[];
+  totalCount: number;
+  hasMore: boolean;
+  offset: number;
+  limit: number;
+}

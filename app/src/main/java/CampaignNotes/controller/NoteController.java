@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import CampaignNotes.ArtifactGraphService;
@@ -24,6 +25,7 @@ import CampaignNotes.dto.NoteConfirmationRequest;
 import CampaignNotes.dto.NoteCreateRequest;
 import CampaignNotes.dto.NoteCreateResponse;
 import CampaignNotes.dto.NoteDTO;
+import CampaignNotes.dto.NoteListResponse;
 import CampaignNotes.dto.NoteProcessingStatus;
 import CampaignNotes.dto.deduplication.MergeProposal;
 import jakarta.validation.Valid;
@@ -198,6 +200,76 @@ public class NoteController {
             
         } catch (Exception e) {
             LOGGER.error("Error fetching note: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * Get all notes in a campaign with pagination support.
+     * Returns notes in reverse chronological order (newest first).
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param limit Maximum number of notes to return (default: 50)
+     * @param offset Offset for pagination (default: 0)
+     * @return Paginated list of notes with metadata
+     */
+    @GetMapping
+    public ResponseEntity<NoteListResponse> getAllNotes(
+            @PathVariable String campaignUuid,
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "0") int offset) {
+        
+        LOGGER.info("GET /api/campaigns/{}/notes - Fetching all notes with limit: {}, offset: {}", 
+                   campaignUuid, limit, offset);
+        
+        // Validate parameters
+        if (limit < 1 || limit > 500) {
+            limit = 50;
+        }
+        if (offset < 0) {
+            offset = 0;
+        }
+        
+        // Validate campaign exists
+        Campain campaign = campaignManager.getCampaignByUuid(campaignUuid);
+        if (campaign == null) {
+            LOGGER.warn("Campaign not found: {}", campaignUuid);
+            return ResponseEntity.notFound().build();
+        }
+        
+        try {
+            // Retrieve paginated notes from Qdrant
+            String collectionName = campaign.getQuadrantCollectionName();
+            
+            // Get total count of notes from Qdrant
+            int totalCount = noteService.countNotesInQdrant(collectionName);
+            
+            List<Note> notes = noteService.getAllCampaignNotes(
+                campaignUuid, 
+                collectionName, 
+                limit, 
+                offset
+            );
+            
+            // Convert to DTOs
+            List<NoteDTO> noteDTOs = new ArrayList<>();
+            for (Note note : notes) {
+                noteDTOs.add(convertToDTO(note));
+            }
+            
+            // Build response with pagination metadata
+            NoteListResponse response = new NoteListResponse(
+                noteDTOs,
+                totalCount,
+                offset,
+                limit
+            );
+            
+            LOGGER.info("Returning {} notes for campaign: {}", noteDTOs.size(), campaignUuid);
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            LOGGER.error("Error fetching all notes: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

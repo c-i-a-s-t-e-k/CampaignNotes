@@ -1,10 +1,14 @@
 package CampaignNotes.database;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.neo4j.driver.AuthTokens;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.GraphDatabase;
+import org.neo4j.driver.Record;
 import org.neo4j.driver.exceptions.ServiceUnavailableException;
 
 import io.github.cdimascio.dotenv.Dotenv;
@@ -152,6 +156,163 @@ public class Neo4jRepository {
                    .replaceAll("[^A-Z0-9_]", "_")
                    .replaceAll("_{2,}", "_")
                    .replaceAll("^_+|_+$", "");
+    }
+    
+    /**
+     * Retrieves all artifacts for a given campaign from Neo4j.
+     * Returns a list of artifact maps with properties: id, name, type, description.
+     * 
+     * @param campaignUuid The UUID of the campaign
+     * @return List of artifact maps, empty list if no artifacts or error
+     */
+    public List<Map<String, Object>> getAllArtifacts(String campaignUuid) {
+        List<Map<String, Object>> artifacts = new ArrayList<>();
+        
+        try {
+            Driver driver = getDriver();
+            if (driver == null) {
+                System.err.println("Neo4j driver not available");
+                return artifacts;
+            }
+            
+            try (var session = driver.session()) {
+                String cypher = "MATCH (a) WHERE a.campaign_uuid = $campaignUuid " +
+                               "RETURN a.id AS id, a.name AS name, a.type AS type, a.description AS description " +
+                               "ORDER BY a.name";
+                
+                var result = session.run(cypher, Map.of("campaignUuid", campaignUuid));
+                
+                while (result.hasNext()) {
+                    Record record = result.next();
+                    Map<String, Object> artifact = new HashMap<>();
+                    artifact.put("id", record.get("id").asString());
+                    artifact.put("name", record.get("name").asString());
+                    artifact.put("type", record.get("type").asString());
+                    artifact.put("description", record.get("description").asString(""));
+                    artifacts.add(artifact);
+                }
+                
+                System.out.println("Retrieved " + artifacts.size() + " artifacts for campaign: " + campaignUuid);
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error retrieving artifacts from Neo4j: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return artifacts;
+    }
+    
+    /**
+     * Retrieves all unique relationship types/labels for a given campaign from Neo4j.
+     * Returns a list of relationship label strings.
+     * 
+     * @param campaignUuid The UUID of the campaign
+     * @return List of unique relationship labels, empty list if none or error
+     */
+    public List<String> getAllRelationshipTypes(String campaignUuid) {
+        List<String> relationshipTypes = new ArrayList<>();
+        
+        try {
+            Driver driver = getDriver();
+            if (driver == null) {
+                System.err.println("Neo4j driver not available");
+                return relationshipTypes;
+            }
+            
+            try (var session = driver.session()) {
+                String cypher = "MATCH (a)-[r]->(b) " +
+                               "WHERE a.campaign_uuid = $campaignUuid AND b.campaign_uuid = $campaignUuid " +
+                               "RETURN DISTINCT r.label AS label " +
+                               "ORDER BY r.label";
+                
+                var result = session.run(cypher, Map.of("campaignUuid", campaignUuid));
+                
+                while (result.hasNext()) {
+                    Record record = result.next();
+                    String label = record.get("label").asString("");
+                    if (!label.isEmpty()) {
+                        relationshipTypes.add(label);
+                    }
+                }
+                
+                System.out.println("Retrieved " + relationshipTypes.size() + " relationship types for campaign: " + campaignUuid);
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error retrieving relationship types from Neo4j: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return relationshipTypes;
+    }
+    
+    /**
+     * Retrieves all artifact pairs connected by a specific relationship type.
+     * Returns a list of maps containing source and target artifact information.
+     * 
+     * @param campaignUuid The UUID of the campaign
+     * @param relationshipLabel The relationship label to filter by
+     * @return List of relationship maps with source and target artifacts, empty list if none or error
+     */
+    public List<Map<String, Object>> getArtifactPairsByRelationType(String campaignUuid, String relationshipLabel) {
+        List<Map<String, Object>> pairs = new ArrayList<>();
+        
+        try {
+            Driver driver = getDriver();
+            if (driver == null) {
+                System.err.println("Neo4j driver not available");
+                return pairs;
+            }
+            
+            try (var session = driver.session()) {
+                String cypher = "MATCH (a)-[r]->(b) " +
+                               "WHERE a.campaign_uuid = $campaignUuid AND b.campaign_uuid = $campaignUuid " +
+                               "AND r.label = $relationshipLabel " +
+                               "RETURN a.id AS sourceId, a.name AS sourceName, a.type AS sourceType, " +
+                               "b.id AS targetId, b.name AS targetName, b.type AS targetType, " +
+                               "r.id AS relationshipId, r.label AS label, r.description AS description";
+                
+                var result = session.run(cypher, Map.of(
+                    "campaignUuid", campaignUuid,
+                    "relationshipLabel", relationshipLabel
+                ));
+                
+                while (result.hasNext()) {
+                    Record record = result.next();
+                    Map<String, Object> pair = new HashMap<>();
+                    
+                    // Source artifact
+                    Map<String, Object> source = new HashMap<>();
+                    source.put("id", record.get("sourceId").asString());
+                    source.put("name", record.get("sourceName").asString());
+                    source.put("type", record.get("sourceType").asString());
+                    pair.put("source", source);
+                    
+                    // Target artifact
+                    Map<String, Object> target = new HashMap<>();
+                    target.put("id", record.get("targetId").asString());
+                    target.put("name", record.get("targetName").asString());
+                    target.put("type", record.get("targetType").asString());
+                    pair.put("target", target);
+                    
+                    // Relationship
+                    pair.put("relationshipId", record.get("relationshipId").asString());
+                    pair.put("label", record.get("label").asString());
+                    pair.put("description", record.get("description").asString(""));
+                    
+                    pairs.add(pair);
+                }
+                
+                System.out.println("Retrieved " + pairs.size() + " artifact pairs for relationship: " + relationshipLabel);
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error retrieving artifact pairs from Neo4j: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return pairs;
     }
 }
 

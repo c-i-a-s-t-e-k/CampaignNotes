@@ -26,3 +26,23 @@ export interface Graph {
   edges: Edge[];
 }
 
+export interface Artifact {
+  id: string;
+  name: string;
+  type: string;
+  description?: string;
+}
+
+export interface RelationType {
+  label: string;
+  count: number;
+}
+
+export interface ArtifactPair {
+  source: Artifact;
+  target: Artifact;
+  relationshipId: string;
+  label: string;
+  description?: string;
+}
+

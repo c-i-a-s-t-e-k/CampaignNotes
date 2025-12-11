@@ -281,6 +281,14 @@ public class CampaignManager {
     }
     
     /**
+     * Gets the database connection manager.
+     * @return The DatabaseConnectionManager instance
+     */
+    public DatabaseConnectionManager getDbConnectionManager() {
+        return dbConnectionManager;
+    }
+    
+    /**
      * Adds a note with its embedding to the specified campaign.
      * Handles Qdrant storage operations and collection management.
      * 

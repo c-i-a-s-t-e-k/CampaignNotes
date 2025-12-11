@@ -531,6 +531,199 @@ public class SqliteRepository {
         
         return expiredCampaigns;
     }
+    
+    /**
+     * Retrieves note metadata for a specific campaign with pagination support.
+     * Returns basic note information from campaign_notes table.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param limit Maximum number of notes to return
+     * @param offset Offset for pagination
+     * @return List of note metadata (UUID, title, created_at, updated_at, word_count)
+     */
+    public List<NoteMetadata> getAllNotesForCampaign(String campaignUuid, int limit, int offset) {
+        List<NoteMetadata> notes = new ArrayList<>();
+        String sql = """
+            SELECT note_uuid, title, created_at, updated_at, word_count 
+            FROM campaign_notes 
+            WHERE campaign_uuid = ? AND is_active = 1 AND deleted_at IS NULL
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, campaignUuid);
+            pstmt.setInt(2, limit);
+            pstmt.setInt(3, offset);
+            
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    NoteMetadata metadata = new NoteMetadata(
+                        rs.getString("note_uuid"),
+                        rs.getString("title"),
+                        rs.getLong("created_at"),
+                        rs.getLong("updated_at"),
+                        rs.getInt("word_count")
+                    );
+                    notes.add(metadata);
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error retrieving notes for campaign: " + e.getMessage());
+        }
+        
+        return notes;
+    }
+    
+    /**
+     * Counts total number of notes for a specific campaign.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @return Total count of active notes in the campaign
+     */
+    public int countNotesForCampaign(String campaignUuid) {
+        String sql = """
+            SELECT COUNT(*) as note_count 
+            FROM campaign_notes 
+            WHERE campaign_uuid = ? AND is_active = 1 AND deleted_at IS NULL
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, campaignUuid);
+            
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("note_count");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error counting notes for campaign: " + e.getMessage());
+        }
+        
+        return 0;
+    }
+    
+    /**
+     * Inserts a new campaign note into the campaign_notes table.
+     * Initializes with pending sync status for both Qdrant and Neo4j.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param noteUuid UUID of the note
+     * @param title Title of the note
+     * @param isOverride Whether this note overrides another note
+     * @param wordCount Number of words in the note content
+     * @return true if the note was successfully inserted, false otherwise
+     */
+    public boolean insertCampaignNote(String campaignUuid, String noteUuid, String title, 
+                                      boolean isOverride, int wordCount) {
+        String sql = """
+            INSERT INTO campaign_notes (
+                campaign_uuid, note_uuid, title, created_at, updated_at,
+                qdrant_sync_status, neo4j_sync_status, is_override, word_count, is_active
+            ) VALUES (?, ?, ?, ?, ?, 'pending', 'pending', ?, ?, 1)
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            long currentTime = System.currentTimeMillis() / 1000L;
+            
+            pstmt.setString(1, campaignUuid);
+            pstmt.setString(2, noteUuid);
+            pstmt.setString(3, title);
+            pstmt.setLong(4, currentTime);
+            pstmt.setLong(5, currentTime);
+            pstmt.setBoolean(6, isOverride);
+            pstmt.setInt(7, wordCount);
+            
+            int affectedRows = pstmt.executeUpdate();
+            return affectedRows > 0;
+            
+        } catch (SQLException e) {
+            System.err.println("Error inserting campaign note: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+    
+    /**
+     * Updates the Qdrant sync status for a campaign note.
+     * Records the sync attempt timestamp and optionally stores error information.
+     * 
+     * @param noteUuid UUID of the note to update
+     * @param status New sync status ('pending', 'syncing', 'synced', 'error', 'retry')
+     * @param errorMessage Optional error message if status is 'error'
+     * @return true if the update was successful, false otherwise
+     */
+    public boolean updateQdrantSyncStatus(String noteUuid, String status, String errorMessage) {
+        String sql = """
+            UPDATE campaign_notes
+            SET qdrant_sync_status = ?, qdrant_last_sync_at = ?, qdrant_sync_error = ?
+            WHERE note_uuid = ?
+            """;
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            long currentTime = System.currentTimeMillis() / 1000L;
+            
+            pstmt.setString(1, status);
+            pstmt.setLong(2, currentTime);
+            pstmt.setString(3, errorMessage);
+            pstmt.setString(4, noteUuid);
+            
+            int affectedRows = pstmt.executeUpdate();
+            return affectedRows > 0;
+            
+        } catch (SQLException e) {
+            System.err.println("Error updating Qdrant sync status for note " + noteUuid + ": " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+    
+    /**
+     * Inner class to represent note metadata from database.
+     */
+    public static class NoteMetadata {
+        private final String noteUuid;
+        private final String title;
+        private final long createdAt;
+        private final long updatedAt;
+        private final int wordCount;
+        
+        public NoteMetadata(String noteUuid, String title, long createdAt, long updatedAt, int wordCount) {
+            this.noteUuid = noteUuid;
+            this.title = title;
+            this.createdAt = createdAt;
+            this.updatedAt = updatedAt;
+            this.wordCount = wordCount;
+        }
+        
+        public String getNoteUuid() {
+            return noteUuid;
+        }
+        
+        public String getTitle() {
+            return title;
+        }
+        
+        public long getCreatedAt() {
+            return createdAt;
+        }
+        
+        public long getUpdatedAt() {
+            return updatedAt;
+        }
+        
+        public int getWordCount() {
+            return wordCount;
+        }
+    }
 }
 
 

@@ -2,6 +2,7 @@ package CampaignNotes.controller;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,9 +16,13 @@ import org.springframework.web.bind.annotation.RestController;
 import CampaignNotes.CampaignManager;
 import CampaignNotes.GraphService;
 import CampaignNotes.NoteService;
+import CampaignNotes.database.DatabaseConnectionManager;
+import CampaignNotes.dto.ArtifactDTO;
+import CampaignNotes.dto.ArtifactPairDTO;
 import CampaignNotes.dto.GraphDTO;
 import CampaignNotes.dto.NodeDTO;
 import CampaignNotes.dto.NoteDTO;
+import CampaignNotes.dto.RelationTypeDTO;
 import model.Campain;
 import model.Note;
 
@@ -34,11 +39,14 @@ public class GraphController {
     private final GraphService graphService;
     private final CampaignManager campaignManager;
     private final NoteService noteService;
+    private final DatabaseConnectionManager dbConnectionManager;
     
-    public GraphController(GraphService graphService, CampaignManager campaignManager, NoteService noteService) {
+    public GraphController(GraphService graphService, CampaignManager campaignManager, 
+                          NoteService noteService, DatabaseConnectionManager dbConnectionManager) {
         this.graphService = graphService;
         this.campaignManager = campaignManager;
         this.noteService = noteService;
+        this.dbConnectionManager = dbConnectionManager;
     }
     
     /**
@@ -215,6 +223,149 @@ public class GraphController {
             
         } catch (Exception e) {
             LOGGER.error("Error fetching artifact notes: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * Get all artifacts for a campaign.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @return List of all artifacts in the campaign
+     */
+    @GetMapping("/artifacts")
+    public ResponseEntity<List<ArtifactDTO>> getAllArtifacts(@PathVariable String campaignUuid) {
+        LOGGER.info("GET /api/campaigns/{}/graph/artifacts - Fetching all artifacts", campaignUuid);
+        
+        // Validate campaign exists
+        Campain campaign = campaignManager.getCampaignByUuid(campaignUuid);
+        if (campaign == null) {
+            LOGGER.warn("Campaign not found: {}", campaignUuid);
+            return ResponseEntity.notFound().build();
+        }
+        
+        try {
+            List<Map<String, Object>> artifacts = dbConnectionManager.getNeo4jRepository()
+                .getAllArtifacts(campaignUuid);
+            
+            // Convert to DTOs
+            List<ArtifactDTO> artifactDTOs = new ArrayList<>();
+            for (Map<String, Object> artifact : artifacts) {
+                artifactDTOs.add(new ArtifactDTO(
+                    (String) artifact.get("id"),
+                    (String) artifact.get("name"),
+                    (String) artifact.get("type"),
+                    (String) artifact.get("description")
+                ));
+            }
+            
+            LOGGER.info("Returning {} artifacts", artifactDTOs.size());
+            return ResponseEntity.ok(artifactDTOs);
+            
+        } catch (Exception e) {
+            LOGGER.error("Error fetching artifacts: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * Get all relationship types for a campaign.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @return List of unique relationship types
+     */
+    @GetMapping("/relations")
+    public ResponseEntity<List<RelationTypeDTO>> getAllRelationTypes(@PathVariable String campaignUuid) {
+        LOGGER.info("GET /api/campaigns/{}/graph/relations - Fetching all relation types", campaignUuid);
+        
+        // Validate campaign exists
+        Campain campaign = campaignManager.getCampaignByUuid(campaignUuid);
+        if (campaign == null) {
+            LOGGER.warn("Campaign not found: {}", campaignUuid);
+            return ResponseEntity.notFound().build();
+        }
+        
+        try {
+            List<String> relationTypes = dbConnectionManager.getNeo4jRepository()
+                .getAllRelationshipTypes(campaignUuid);
+            
+            // Convert to DTOs (count will be computed later if needed)
+            List<RelationTypeDTO> relationDTOs = new ArrayList<>();
+            for (String label : relationTypes) {
+                relationDTOs.add(new RelationTypeDTO(label, 0)); // Count placeholder
+            }
+            
+            LOGGER.info("Returning {} relation types", relationDTOs.size());
+            return ResponseEntity.ok(relationDTOs);
+            
+        } catch (Exception e) {
+            LOGGER.error("Error fetching relation types: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    /**
+     * Get all artifact pairs connected by a specific relationship type.
+     * 
+     * @param campaignUuid UUID of the campaign
+     * @param relationLabel The relationship label to filter by
+     * @return List of artifact pairs with the specified relationship
+     */
+    @GetMapping("/relations/{relationLabel}/pairs")
+    public ResponseEntity<List<ArtifactPairDTO>> getArtifactPairsByRelation(
+            @PathVariable String campaignUuid,
+            @PathVariable String relationLabel) {
+        
+        LOGGER.info("GET /api/campaigns/{}/graph/relations/{}/pairs - Fetching artifact pairs", 
+                   campaignUuid, relationLabel);
+        
+        // Validate campaign exists
+        Campain campaign = campaignManager.getCampaignByUuid(campaignUuid);
+        if (campaign == null) {
+            LOGGER.warn("Campaign not found: {}", campaignUuid);
+            return ResponseEntity.notFound().build();
+        }
+        
+        try {
+            List<Map<String, Object>> pairs = dbConnectionManager.getNeo4jRepository()
+                .getArtifactPairsByRelationType(campaignUuid, relationLabel);
+            
+            // Convert to DTOs
+            List<ArtifactPairDTO> pairDTOs = new ArrayList<>();
+            for (Map<String, Object> pair : pairs) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> sourceMap = (Map<String, Object>) pair.get("source");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> targetMap = (Map<String, Object>) pair.get("target");
+                
+                ArtifactDTO source = new ArtifactDTO(
+                    (String) sourceMap.get("id"),
+                    (String) sourceMap.get("name"),
+                    (String) sourceMap.get("type"),
+                    null
+                );
+                
+                ArtifactDTO target = new ArtifactDTO(
+                    (String) targetMap.get("id"),
+                    (String) targetMap.get("name"),
+                    (String) targetMap.get("type"),
+                    null
+                );
+                
+                pairDTOs.add(new ArtifactPairDTO(
+                    source,
+                    target,
+                    (String) pair.get("relationshipId"),
+                    (String) pair.get("label"),
+                    (String) pair.get("description")
+                ));
+            }
+            
+            LOGGER.info("Returning {} artifact pairs for relation: {}", pairDTOs.size(), relationLabel);
+            return ResponseEntity.ok(pairDTOs);
+            
+        } catch (Exception e) {
+            LOGGER.error("Error fetching artifact pairs: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

@@ -2,8 +2,25 @@
  * Note API functions
  */
 
-import { Note, NoteCreateRequest, NoteCreateResponse, NoteConfirmationRequest, NoteProcessingStatus } from '../types';
+import { Note, NoteCreateRequest, NoteCreateResponse, NoteConfirmationRequest, NoteProcessingStatus, NoteListResponse } from '../types';
 import apiClient from './client';
+
+/**
+ * Get all notes for a campaign with pagination support
+ */
+export const getAllNotes = async (
+  campaignUuid: string,
+  limit: number = 50,
+  offset: number = 0
+): Promise<NoteListResponse> => {
+  const response = await apiClient.get<NoteListResponse>(
+    `/campaigns/${campaignUuid}/notes`,
+    {
+      params: { limit, offset }
+    }
+  );
+  return response.data;
+};
 
 /**
  * Create a new note in a campaign
