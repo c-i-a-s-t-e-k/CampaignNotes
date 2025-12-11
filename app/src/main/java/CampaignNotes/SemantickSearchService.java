@@ -47,18 +47,20 @@ public class SemantickSearchService {
     }
     
     /**
-     * Searches for the top K notes most semantically similar to the query within a specific campaign.
+     * Searches for the top K items most semantically similar to the query within a specific campaign.
+     * Can filter by point type (note, artifact, relation) in Qdrant.
      * Results are ordered by similarity score (descending), with index 0 being the closest match.
      * 
      * @param query the search query text
      * @param k the number of results to return (will be clamped to MAX_K)
      * @param campaignUuid the UUID of the campaign to search within
-     * @return list of note IDs ordered by similarity (closest first), empty list if no results or error
+     * @param pointType the type of points to search ("note", "artifact", "relation"), null for no filter
+     * @return list of item IDs ordered by similarity (closest first), empty list if no results or error
      * @throws IllegalArgumentException if query is null/empty, k <= 0, or campaignUuid is null/empty
      */
-    public List<String> getTopKMatch(String query, int k, String campaignUuid) {
-        LOGGER.debug("Starting semantic search - query: '{}', k: {}, campaignUuid: '{}'", 
-                query, k, campaignUuid);
+    public List<String> getTopKMatch(String query, int k, String campaignUuid, String pointType) {
+        LOGGER.debug("Starting semantic search - query: '{}', k: {}, campaignUuid: '{}', type: '{}'", 
+                query, k, campaignUuid, pointType);
         
         // Input validation
         if (query == null || query.trim().isEmpty()) {
@@ -123,14 +125,25 @@ public class SemantickSearchService {
             LOGGER.debug("Qdrant client obtained successfully");
             
             // Perform search
-            LOGGER.debug("Building search request for collection '{}' with limit {}", 
-                    collectionName, effectiveK);
-            SearchPoints searchRequest = SearchPoints.newBuilder()
+            LOGGER.debug("Building search request for collection '{}' with limit {} and type filter: '{}'", 
+                    collectionName, effectiveK, pointType);
+            
+            SearchPoints.Builder searchRequestBuilder = SearchPoints.newBuilder()
                     .setCollectionName(collectionName)
                     .addAllVector(embeddingFloats)
                     .setLimit(effectiveK)
-                    .setWithPayload(io.qdrant.client.WithPayloadSelectorFactory.enable(true))
-                    .build();
+                    .setWithPayload(io.qdrant.client.WithPayloadSelectorFactory.enable(true));
+            
+            // Add type filter if specified
+            if (pointType != null && !pointType.trim().isEmpty()) {
+                io.qdrant.client.grpc.Points.Filter filter = io.qdrant.client.grpc.Points.Filter.newBuilder()
+                        .addMust(io.qdrant.client.ConditionFactory.matchKeyword("type", pointType))
+                        .build();
+                searchRequestBuilder.setFilter(filter);
+                LOGGER.debug("Applied type filter: {}", pointType);
+            }
+            
+            SearchPoints searchRequest = searchRequestBuilder.build();
             
             LOGGER.info("Executing semantic search in collection '{}' for query: '{}'", 
                     collectionName, query);
@@ -138,27 +151,32 @@ public class SemantickSearchService {
                     .get(); // Wait for async result
             LOGGER.info("Search completed successfully, found {} results", searchResults.size());
             
-            // Extract note_id from each result's payload in order
-            List<String> noteIds = new ArrayList<>();
+            // Extract item ID from each result's payload in order
+            // The ID field name depends on the type: note_id, artifact_id, or relationship_id
+            List<String> itemIds = new ArrayList<>();
             for (ScoredPoint point : searchResults) {
-                // Check if payload contains note_id
+                String itemId = null;
+                
+                // Try different ID field names based on type
                 if (point.getPayloadMap().containsKey("note_id")) {
-                    String noteId = point.getPayloadMap().get("note_id").getStringValue();
-                    
-                    if (noteId != null && !noteId.isEmpty()) {
-                        noteIds.add(noteId);
-                        LOGGER.debug("Result #{}: note_id='{}', score={}", 
-                                noteIds.size(), noteId, point.getScore());
-                    } else {
-                        LOGGER.warn("Found result with empty note_id, skipping");
-                    }
+                    itemId = point.getPayloadMap().get("note_id").getStringValue();
+                } else if (point.getPayloadMap().containsKey("artifact_id")) {
+                    itemId = point.getPayloadMap().get("artifact_id").getStringValue();
+                } else if (point.getPayloadMap().containsKey("relationship_id")) {
+                    itemId = point.getPayloadMap().get("relationship_id").getStringValue();
+                }
+                
+                if (itemId != null && !itemId.isEmpty()) {
+                    itemIds.add(itemId);
+                    LOGGER.debug("Result #{}: item_id='{}', score={}", 
+                            itemIds.size(), itemId, point.getScore());
                 } else {
-                    LOGGER.warn("Found result without note_id in payload, skipping");
+                    LOGGER.warn("Found result without valid ID field in payload, skipping");
                 }
             }
             
-            LOGGER.info("Extracted {} valid note IDs from search results", noteIds.size());
-            return noteIds;
+            LOGGER.info("Extracted {} valid item IDs from search results", itemIds.size());
+            return itemIds;
             
         } catch (IllegalArgumentException e) {
             // Re-throw validation exceptions
@@ -186,12 +204,24 @@ public class SemantickSearchService {
         }
     }
 
+    /**
+     * Overloaded method for backward compatibility - searches for notes only.
+     * 
+     * @param query the search query text
+     * @param k the number of results to return
+     * @param campaignUuid the UUID of the campaign to search within
+     * @return list of note IDs ordered by similarity
+     */
+    public List<String> getTopKMatch(String query, int k, String campaignUuid) {
+        return getTopKMatch(query, k, campaignUuid, "note");
+    }
+    
     public List<String> searchSemanticklyNotes(String query, String campaignUuid) {
         return searchSemanticklyNotes(query, 5, campaignUuid);
     }
     public List<String> searchSemanticklyNotes(String query, int k, String campaignUuid) {
         //TODO: preprocessing query with LLM to get better query for search
-        List<String> foundNotes = getTopKMatch(query, k, campaignUuid);
+        List<String> foundNotes = getTopKMatch(query, k, campaignUuid, "note");
         //TODO: check with llm if iutput have a good qualit plus fiteri it with LLM
         return foundNotes;
     }

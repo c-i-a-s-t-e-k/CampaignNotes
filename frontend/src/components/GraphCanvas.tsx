@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { InteractiveNvlWrapper } from '@neo4j-nvl/react';
-import { useCampaignStore, useUIStore } from '../stores';
+import { useCampaignStore, useUIStore, useGraphStore } from '../stores';
 import { useGraphData } from '../hooks/useGraphData';
 import { useNeo4jGraph } from '../hooks/useNeo4jGraph';
 import { getArtifactNeighbors } from '../api/graph';
@@ -16,6 +16,7 @@ import { Graph, Node, Edge } from '../types';
 const GraphCanvas: React.FC = () => {
   const { selectedCampaign } = useCampaignStore();
   const { setSelectedArtifactId, selectedNoteId } = useUIStore();
+  const { filteredRelationType } = useGraphStore();
   const nvlRef = useRef<any>(null);
   const lastClickRef = useRef<{ nodeId: string; timestamp: number } | null>(null);
   
@@ -111,28 +112,56 @@ const GraphCanvas: React.FC = () => {
     [setSelectedArtifactId, handleNodeDoubleClick]
   );
 
-  // Merge API graph with local expansions
+  // Merge API graph with local expansions and apply relation filter
   const mergedGraph = useMemo(() => {
     if (!graph) return null;
 
+    const allNodes = [
+      ...graph.nodes,
+      ...expandedNodes.filter(
+        (n) => !graph.nodes.some((gn) => gn.id === n.id)
+      ),
+    ];
+    
+    const allEdges = [
+      ...graph.edges,
+      ...expandedEdges.filter(
+        (e) =>
+          !graph.edges.some(
+            (ge) => ge.id === e.id && ge.source === e.source && ge.target === e.target
+          )
+      ),
+    ];
+
+    // Apply relation type filter if set
+    if (filteredRelationType) {
+      const filteredEdges = allEdges.filter(
+        (edge) => edge.label === filteredRelationType
+      );
+      
+      // Get node IDs that are connected by filtered edges
+      const connectedNodeIds = new Set<string>();
+      filteredEdges.forEach((edge) => {
+        connectedNodeIds.add(edge.source);
+        connectedNodeIds.add(edge.target);
+      });
+      
+      // Only show nodes that are connected by the filtered relation type
+      const filteredNodes = allNodes.filter((node) =>
+        connectedNodeIds.has(node.id)
+      );
+      
+      return {
+        nodes: filteredNodes,
+        edges: filteredEdges,
+      };
+    }
+
     return {
-      nodes: [
-        ...graph.nodes,
-        ...expandedNodes.filter(
-          (n) => !graph.nodes.some((gn) => gn.id === n.id)
-        ),
-      ],
-      edges: [
-        ...graph.edges,
-        ...expandedEdges.filter(
-          (e) =>
-            !graph.edges.some(
-              (ge) => ge.id === e.id && ge.source === e.source && ge.target === e.target
-            )
-        ),
-      ],
+      nodes: allNodes,
+      edges: allEdges,
     };
-  }, [graph, expandedNodes, expandedEdges]);
+  }, [graph, expandedNodes, expandedEdges, filteredRelationType]);
 
   // Prepare graph data for NVL
   const { nodes, relationships, onNodeClick } = useNeo4jGraph({
@@ -205,8 +234,9 @@ const GraphCanvas: React.FC = () => {
       {/* Graph info header */}
       <div className="absolute top-4 left-4 z-10 bg-background/90 backdrop-blur-sm px-3 py-2 rounded-md border border-border shadow-sm">
         <p className="text-xs text-muted-foreground">
-          {graph.nodes.length} artifacts • {graph.edges.length} relationships
-          {selectedNoteId && ' (filtered)'}
+          {mergedGraph?.nodes.length || 0} artifacts • {mergedGraph?.edges.length || 0} relationships
+          {selectedNoteId && ' (filtered by note)'}
+          {filteredRelationType && ` (filtered by: ${filteredRelationType})`}
         </p>
       </div>
 
