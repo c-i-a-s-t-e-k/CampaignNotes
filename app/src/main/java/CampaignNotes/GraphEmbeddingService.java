@@ -72,10 +72,6 @@ public class GraphEmbeddingService {
             sb.append(" | Description: ").append(relationship.getDescription());
         }
         
-        if (relationship.getReasoning() != null && !relationship.getReasoning().isEmpty()) {
-            sb.append(" | Reasoning: ").append(relationship.getReasoning());
-        }
-        
         return sb.toString();
     }
     
