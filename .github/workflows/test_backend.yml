@@ -11,9 +11,9 @@ jobs:
   test:
     if: |
       github.event_name == 'pull_request' && (
-        github.event.action == 'labeled' && github.event.label.name == 'backend' ||
-        github.event.action == 'opened' && contains(github.event.pull_request.labels.*.name, 'backend') ||
-        github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'backend')
+        (github.event.action == 'labeled' && (github.event.label.name == 'backend' || contains(github.event.label.name, 'backend'))) ||
+        (github.event.action == 'opened' && contains(github.event.pull_request.labels.*.name, 'backend')) ||
+        (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'backend'))
       )
     runs-on: ubuntu-latest
 
