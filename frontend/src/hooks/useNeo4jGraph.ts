@@ -3,7 +3,7 @@
  * Handles graph initialization, styling, layout, and interactions.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useCallback } from 'react';
 import type { Node as NVLNode, Relationship as NVLRelationship } from '@neo4j-nvl/base';
 import { Graph, Node, Edge } from '../types';
 import { useGraphStore } from '../stores';
@@ -23,7 +23,6 @@ const TYPE_COLORS: Record<string, string> = {
  * Convert API graph data to NVL format
  */
 const convertToNVLFormat = (graph: Graph) => {
-  console.log('[useNeo4jGraph] Converting graph data to NVL format:', graph);
   const nodes: NVLNode[] = graph.nodes.map((node: Node) => ({
     id: node.id,
     caption: node.name,

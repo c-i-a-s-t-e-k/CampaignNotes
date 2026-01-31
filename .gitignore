@@ -51,7 +51,8 @@ sqlite.db
 sqlite.db.*
 
 #my lesset scripts
-start_dbs.sh
+start_dbs_local_models.sh
+stop_dbs_local_models.sh
 clear_branches.sh
 basesDashbordsURL.txt
 

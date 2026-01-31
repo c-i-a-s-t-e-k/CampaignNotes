@@ -1,13 +1,49 @@
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { InteractiveNvlWrapper } from '@neo4j-nvl/react';
 import { useCampaignStore, useUIStore, useGraphStore } from '../stores';
 import { useGraphData } from '../hooks/useGraphData';
 import { useNeo4jGraph } from '../hooks/useNeo4jGraph';
 import { getArtifactNeighbors } from '../api/graph';
 import { Card } from './ui/card';
-import { Loader2, Network, ZoomIn, ZoomOut } from 'lucide-react';
+import { Loader2, Network, ZoomIn, ZoomOut, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Graph, Node, Edge } from '../types';
+
+/** Error Boundary for NVL graph visualization */
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class NvlErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('[NvlErrorBoundary] Graph visualization error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-full w-full flex items-center justify-center bg-destructive/10 rounded-md p-4">
+          <div className="text-center">
+            <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-2" />
+            <p className="text-sm text-destructive font-medium">Graph visualization error</p>
+            <p className="text-xs text-muted-foreground mt-1">{this.state.error?.message}</p>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /**
  * Graph canvas component for visualizing campaign knowledge graph.
@@ -263,30 +299,35 @@ const GraphCanvas: React.FC = () => {
       </div>
 
       {/* NVL Interactive Wrapper */}
-      <div className="nvl-container overflow-hidden h-full w-full">
-        <InteractiveNvlWrapper
-          ref={nvlRef}
-          nodes={nodes}
-          rels={relationships}
-          nvlOptions={{
-            initialZoom: 1,
-            minZoom: 0.1,
-            maxZoom: 4,
-            layout: 'forceDirected',
-            allowDynamicMinZoom: true,
-            disableWebGL: false,
-            instanceId: 'campaign-graph',
-          }}
-          mouseEventCallbacks={{
-            onNodeClick: (node) => onNodeClick(node),
-            onCanvasClick: true,
-            onPan: true,
-            onZoom: true,
-            onDrag: true,
-            onDragEnd: true,
-            onDragStart: true,
-          }}
-        />
+      <div className="nvl-container overflow-hidden h-full w-full" style={{ minHeight: '400px' }}>
+        <NvlErrorBoundary>
+          <InteractiveNvlWrapper
+            ref={nvlRef}
+            nodes={nodes}
+            rels={relationships}
+            nvlOptions={{
+              initialZoom: 1,
+              minZoom: 0.1,
+              maxZoom: 4,
+              layout: 'forceDirected',
+              allowDynamicMinZoom: true,
+              disableTelemetry: true,
+              instanceId: 'campaign-graph',
+            }}
+            mouseEventCallbacks={{
+              onNodeClick: (node) => onNodeClick(node),
+              onCanvasClick: true,
+              onPan: true,
+              onZoom: true,
+              onDrag: true,
+              onDragEnd: true,
+              onDragStart: true,
+            }}
+            onInitializationError={(error) => {
+              console.error('[GraphCanvas] NVL initialization error:', error);
+            }}
+          />
+        </NvlErrorBoundary>
       </div>
     </Card>
   );
