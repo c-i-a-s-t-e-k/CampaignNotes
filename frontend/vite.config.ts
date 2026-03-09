@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
+import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -8,6 +9,15 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+  },
+  resolve: {
+    alias: {
+      // Force all packages to use the same React instance
+      // This fixes the "Cannot read properties of null (reading 'useRef')" error
+      // caused by @neo4j-nvl/react bundling its own React 18 while project uses React 19
+      'react': path.resolve(__dirname, 'node_modules/react'),
+      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+    },
   },
   optimizeDeps: {
     exclude: ['@neo4j-nvl/layout-workers'],

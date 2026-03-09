@@ -47,7 +47,7 @@ CampaignNotes/frontend/
 - **Tailwind CSS 3.4** + **Shadcn/ui** (komponenty UI, dark mode)
 - **Zustand 5** (global state) + **TanStack Query 5** (server state, cache)
 - **Axios 1.7** (HTTP) + **React Hook Form 7** (formularze)
-- **Neo4j NVL 1.0.0** (@neo4j-nvl/base) - wizualizacja grafu kampanii
+- **Neo4j NVL 0.3.9** (@neo4j-nvl/react) - wizualizacja grafu kampanii
 - **react-hot-toast** (powiadomienia)
 
 Pozostałe elementy:
