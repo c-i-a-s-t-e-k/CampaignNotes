@@ -15,7 +15,7 @@ Watch the video demonstrating the application in action:
 
 The diagram below illustrates the architectural structure of the entire system and its interacting modules.
 
-![Project Architecture](tmp/Architektura_projektu.png)
+![Project Architecture](Architektura_projektu.png)
 
 The application consists of the following main components:
 
