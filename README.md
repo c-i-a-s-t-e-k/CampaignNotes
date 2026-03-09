@@ -1,36 +1,37 @@
 # CampaignNotes
 
-Application designed to assist in tracking yore notes and helping organizing your RPG sessions with usage of LLM power.
+The CampaignNotes application is a dedicated narrative note-taking tool designed primarily for Game Masters (GMs) in RPG games.
 
-## Technology Stack
+## 1. Problem Statement
+Many narrative creators encounter difficulties due to the limitations of human working memory when running multi-threaded campaigns. Remembering all character motivations or connections between locations can be very challenging, and the lack of quick access to specific information from previous sessions poses a serious threat to the integrity and consistency of the story. CampaignNotes, acting as an AI assistant, eliminates these limitations through its integrated note-taking system, a visualization format for multi-threaded narratives (directed graphs), and an automated history search mechanism, relieving the Game Master's memory burden.
 
-### Backend
-- **Java 21** - Core application
-- **Gradle 7.2** - Build automation
-- **SQLite** - User and campaign metadata
-- **Neo4j** - Artifact relationship graph
-- **Qdrant** - Vector database for semantic search
+## 2. How It Works
+The application, powered by large language models, processes inputted notes, transforming them into a relational graph structure and saving them as semantic vectors. The artifacts and relationships extracted by AI can then be interacted with – you simply need to ask the built-in chat assistant questions in natural language. The tool quickly analyzes the constructed narrative structure and locates the necessary facts, making it easier for the user to reconstruct the entire scenario.
 
-### Frontend
-- **React 19** - UI framework
-- **TypeScript** - Type-safe development
-- **Vite** - Build tool and dev server
-- **Zustand** - State management
-- **React Query** - Data fetching and caching
-- **Tailwind CSS** - Styling
-- **Neo4j NVL** - Graph visualization
+Watch the video demonstrating the application in action:
+[How It Works Demonstration](https://www.youtube.com/watch?v=wWOqkW150o0)
 
-### AI Integration
-- **OpenAI API** - LLM and embedding generation
-- **Ollama** - Local LLM models support
-- **Langfuse** - AI observability and prompt management
-- **OpenTelemetry** - Distributed tracing
+## 3. Project Architecture
 
-## Setup and Configuration
+The diagram below illustrates the architectural structure of the entire system and its interacting modules.
 
-### 1. Running External Services
+![Project Architecture](tmp/Architektura_projektu.png)
 
-The application requires several external services that can be run using Docker:
+The application consists of the following main components:
+
+* **Backend (Java 21 / Spring Boot 3):** The central server responsible for managing data flow, transforming data into embeddings and graph nodes, directing system queries to the LLM, and coordinating with the array of external databases.
+* **Frontend (React 19 / TypeScript / Vite):** The user interface for communicating with the server and AI chat, and for rendering visualizations of the input graph using the Neo4j NVL library.
+* **Databases:** The solution uses a multi-purpose database stack:
+  * **Qdrant** — an optimized vector database that searches for relations based on cosine distance, enabling semantic search.
+  * **Neo4j** — a graph database storing narrative logic in a structure of nodes (artifacts) connected by multiple types of relationships.
+  * **SQLite** — a relational database needed to store standard metadata, not directly related to vector-graph logic.
+* **LLM Management (Langfuse):** The LLM models used by the application (OpenAI or local instances via Ollama) are connected to the **Langfuse** system, which logs their deductive *traces* and handles versioning of internal prompt instructions, thereby giving developers better oversight of the artificial intelligence's operation.
+
+## 4. Setup and Configuration
+
+### 1. Running External Services (Docker)
+
+The application requires several services that can all be run using Docker.
 
 #### Neo4j (Graph Database)
 ```bash
@@ -64,113 +65,34 @@ docker run -d \
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Run a model (e.g., qwen3)
+# Run a chosen model (e.g., qwen3)
 ollama run qwen3
 ```
 
 ### 2. Environment Configuration
-
-Copy the `.env-example` file to `.env` and fill in the required values:
-
+Copy the template file to your target file, and then fill in your credentials:
 ```bash
 cp .env-example .env
 ```
+The `.env-example` file contains all necessary environment variables, such as:
+- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`
+- `QUADRANT_GRPC_PORT`, `QUADRANT_URL`
+- `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`
+- `OLLAMA_HOST`
+- `OPENAI_API_KEY`
 
-The `.env-example` file contains all necessary environment variables:
-- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` - Neo4j configuration
-- `QUADRANT_GRPC_PORT`, `QUADRANT_URL` - Qdrant configuration
-- `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` - Langfuse configuration
-- `OLLAMA_HOST` - Ollama server address
-- `OPENAI_API_KEY` - OpenAI API key
+### 3. Building and Running from the Shell
 
-## Tracking and Observability
-
-CampaignNotes uses **OpenTelemetry** to track AI operations (embeddings, LLM generations).
-Traces are exported to **Langfuse** via the OTLP endpoint for monitoring, debugging, and cost analysis.
-
-### What is Tracked
-
-- **Embedding Generation** - Token usage, duration, model used
-- **Artifact Extraction (NAE)** - LLM calls, prompts, responses
-- **Relationship Extraction (ARE)** - LLM calls, tokens, results
-- **Full Workflows** - End-to-end campaign note processing
-
-### Viewing Traces
-
-Access your Langfuse dashboard to view:
-- Execution traces for each note processed
-- Token usage and costs per operation
-- LLM call latencies
-- Error rates and debugging information
-
-## Building and Running
-
-### Backend
-
+#### Backend
 ```bash
-# Build the project
 ./gradlew build
-
-# Run the application
 ./gradlew bootRun
 ```
 
-### Frontend
-
+#### Frontend
 ```bash
-# Navigate to frontend directory
 cd frontend
-
-# Install dependencies
 npm install
-
-# Run development server
 npm start
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
 ```
-
-The frontend will be available at `http://localhost:3000`.
-
-### Testing
-
-```bash
-# Run unit tests only
-./gradlew test
-
-# Run unit tests + integration tests
-./gradlew test integrationTest
-
-# Or in one command (clean build with all tests)
-./gradlew clean build integrationTest
-```
-
-## Architecture
-
-The application consists of two main components:
-
-### Backend (Java/Spring)
-- **CampaignNotes/** - Main application logic
-- **database/** - Data access layer (SQLite, Neo4j, Qdrant)
-- **llm/** - LLM services and embedding generation
-- **tracking/** - Langfuse and OpenTelemetry integration
-- **model/** - Domain models
-
-### Frontend (React/TypeScript)
-- **pages/** - Application pages
-- **components/** - UI components
-- **api/** - API clients for backend communication
-- **stores/** - State management (Zustand)
-- **hooks/** - Custom React hooks
-- **types/** - TypeScript type definitions
-
-### Data Flow
-1. Frontend communicates with backend via REST API
-2. Backend processes notes using LLM (OpenAI/Ollama)
-3. Embeddings are stored in Qdrant for semantic search
-4. Relationship graph is stored in Neo4j
-5. All operations are tracked in Langfuse via OpenTelemetry
+Your local client interface should now be available at: `http://localhost:3000`.
